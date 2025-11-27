@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empire OS - Stable Restore v16.2</title>
+    
+    <!-- Tailwind CSS - Production -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
+    <script>
+        // Custom theme variables will be applied via CSS custom properties
+        document.documentElement.style.setProperty('--color-primary', '#4f46e5');
+        document.documentElement.style.setProperty('--color-secondary', '#64748b');
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            transition: background-color 0.3s ease, color 0.3s ease; 
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .page-transition { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        
+        input:focus, select:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2); }
+        .nav-item.active { background-color: #e0e7ff; color: #4338ca; border-right: 3px solid #4338ca; }
+        .dark .nav-item.active { background-color: #1e1b4b; color: #818cf8; border-right: 3px solid #818cf8; }
+        
+        .modal-backdrop { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(4px); }
+        .card { background: white; border-radius: 1rem; border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .dark .card { background: #1e293b; border-color: #334155; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        
+        .trophy-float { animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0px); } }
+
+        .group:hover .group-hover\:visible { visibility: visible; opacity: 1; transform: translateY(0); }
+
+        /* Smooth transitions */
+        button, input, select { transition: all 0.2s ease; }
+        button:active { transform: scale(0.98); }
+        
+        /* Pulse animation for new items */
+        @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .animate-pulse-once { animation: pulse-once 0.3s ease-out; }
+        
+        /* Slide in from bottom */
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slide-up { animation: slideUp 0.4s ease-out; }
+        
+        /* Success ripple */
+        @keyframes ripple { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 100% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); } }
+        .animate-ripple { animation: ripple 0.6s ease-out; }
+        
+        /* Loading spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        
+        /* Focus styles */
+        button:focus-visible, input:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+        
+        /* Hover effects */
+        .hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1); }
+        
+        /* Delete animation */
+        @keyframes fadeOut { to { opacity: 0; transform: translateX(-100%); } }
+        .animate-delete { animation: fadeOut 0.3s ease-out forwards; }
+        
+        /* No scrollbar style for tabs */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-light text-slate-800 dark:bg-dark dark:text-slate-100 h-screen flex overflow-hidden">
+
+    <!-- MODALS -->
+    <div id="input-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 m-4 animate-bounce-in">
+            <h3 class="text-lg font-bold mb-4 text-slate-800 dark:text-white" id="modal-title">Novo Item</h3>
+            <input type="text" id="modal-input" class="w-full border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none mb-4 text-slate-800 dark:text-white" placeholder="Digite aqui...">
+            <div class="flex gap-2 justify-end">
+                <button onclick="closeInputModal()" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-bold">Cancelar</button>
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="calc-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full m-4 p-6 flex flex-col max-h-[80vh]">
+            <div class="flex justify-between items-center mb-4 shrink-0">
+                <h3 class="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white"><i class="ph-bold ph-calculator text-indigo-500"></i> Detalhes de Sobrevivência</h3>
+                <button onclick="toggleCalc(false)" class="text-slate-400 hover:text-red-500"><i class="ph-bold ph-x"></i></button>
+            </div>
+            <div id="calc-items-list" class="space-y-3 flex-grow overflow-y-auto pr-2 mb-4"></div>
+            <button onclick="addSurvivalItem()" class="w-full mb-4 py-2 border-2 border-dashed border-slate-200 dark:border-slate-600 text-slate-400 text-xs font-bold rounded-lg hover:border-indigo-400 hover:text-indigo-500 transition">+ Adicionar Gasto</button>
+            <div class="shrink-0 border-t border-slate-100 dark:border-slate-700 pt-4">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-sm font-bold text-slate-500">Total Mensal:</span>
+                    <span id="calc-total" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">R$ 0</span>
+                </div>
+                <button onclick="applyCalc()" class="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <aside class="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col z-20 shadow-xl transition-all duration-300 hidden md:flex">
+        <div class="p-6 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                <i class="ph-fill ph-planet text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight text-slate-800 dark:text-white">Empire OS</h1>
+                <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Stable v16.2</p>
+            </div>
+        </div>
+
+        <nav class="flex-1 px-4 space-y-1 mt-4">
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                <i class="ph-duotone ph-squares-four text-xl"></i> Visão Geral
+            </button>
+            <button onclick="switchTab('finance')" id="nav-finance" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                <i class="ph-duotone ph-chart-pie-slice text-xl"></i> Financeiro
+            </button>
+            <button onclick="switchTab('projects')" id="nav-projects" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                <i class="ph-duotone ph-target text-xl"></i> Metas & Sonhos
+            </button>
+            <button onclick="switchTab('roadmap')" id="nav-roadmap" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                <i class="ph-duotone ph-map-trifold text-xl"></i> Jornada
+            </button>
+        </nav>
+
+        <div class="p-4 border-t border-slate-200 dark:border-slate-800">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold shadow-md">M&L</div>
+                <div class="text-xs">
+                    <p class="font-bold text-slate-700 dark:text-slate-200">Marcelino & Luiza</p>
+                    <p class="text-slate-400" id="user-rank">Nível 1</p>
+                </div>
+            </div>
+            <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-2">
+                <div id="xp-bar-side" class="h-full bg-indigo-500 transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-400 font-bold uppercase">
+                <span>XP</span>
+                <span id="xp-val-side">0/1000</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+        
+        <!-- Top Bar -->
+        <div class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur flex justify-between items-center px-4 md:px-8 z-10 sticky top-0">
+            <div class="flex items-center gap-2 md:gap-4">
+                <button onclick="toggleMobileMenu()" class="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
+                    <i class="ph-bold ph-list text-xl"></i>
+                </button>
+                <h2 id="page-title" class="text-lg md:text-xl font-bold text-slate-800 dark:text-white">Visão Geral</h2>
+                <span id="last-saved" class="hidden md:flex text-xs text-emerald-500 font-bold items-center gap-1 opacity-0 transition-opacity bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full"><i class="ph-bold ph-check"></i> Salvo</span>
+            </div>
+            <div class="flex items-center gap-2 md:gap-3 no-print">
+                <button onclick="downloadData()" class="p-2 text-slate-400 hover:text-primary transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Backup"><i class="ph-bold ph-download-simple"></i></button>
+                <label class="p-2 text-slate-400 hover:text-primary transition cursor-pointer rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Restaurar"><i class="ph-bold ph-upload-simple"></i><input type="file" class="hidden" accept=".json" onchange="uploadData(this)"></label>
+                <button onclick="resetAllData()" class="p-2 text-slate-400 hover:text-red-500 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 hidden md:block" title="Resetar"><i class="ph-bold ph-trash"></i></button>
+                <button onclick="toggleTheme()" class="p-2 text-slate-400 hover:text-amber-500 transition rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Alternar tema"><i class="ph-bold ph-moon"></i></button>
+            </div>
+        </div>
+        
+        <!-- Mobile Menu Overlay -->
+        <div id="mobile-menu" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm hidden md:hidden" onclick="toggleMobileMenu()">
+            <div class="w-64 h-full bg-white dark:bg-slate-900 shadow-2xl" onclick="event.stopPropagation()">
+                <div class="p-6 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
+                            <i class="ph-fill ph-planet text-2xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-lg text-slate-800 dark:text-white">Empire OS</h1>
+                            <p class="text-[10px] uppercase font-bold text-slate-400">v16.2</p>
+                        </div>
+                    </div>
+                    <button onclick="toggleMobileMenu()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                        <i class="ph-bold ph-x text-xl"></i>
+                    </button>
+                </div>
+                <nav class="p-4 space-y-1">
+                    <button onclick="switchTab('dashboard'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                        <i class="ph-duotone ph-squares-four text-xl"></i> Visão Geral
+                    </button>
+                    <button onclick="switchTab('finance'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                        <i class="ph-duotone ph-chart-pie-slice text-xl"></i> Financeiro
+                    </button>
+                    <button onclick="switchTab('projects'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                        <i class="ph-duotone ph-target text-xl"></i> Metas & Sonhos
+                    </button>
+                    <button onclick="switchTab('roadmap'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                        <i class="ph-duotone ph-map-trifold text-xl"></i> Jornada
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- CONTENT AREA -->
+        <div class="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth bg-slate-50/50 dark:bg-slate-900" id="content-area">
+            
+            <!-- 1. DASHBOARD -->
+            <div id="view-dashboard" class="page-transition space-y-8 max-w-7xl mx-auto">
+                
+                <!-- Hero HUD -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                    <!-- Main Stat -->
+                    <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col justify-between relative overflow-hidden">
+                         <div class="flex justify-between items-start z-10">
+                             <div>
+                                 <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Fluxo de Caixa Mensal</p>
+                                 <h2 class="text-3xl font-black text-slate-800 dark:text-white" id="dash-income">R$ 0,00</h2>
+                             </div>
+                             <div class="bg-indigo-50 dark:bg-slate-900 px-3 py-1 rounded-lg border border-indigo-100 dark:border-slate-700">
+                                 <span class="text-xs font-bold text-indigo-600">Renda Total</span>
+                             </div>
+                         </div>
+                         <div class="h-32 w-full mt-4 z-10"><canvas id="cashflowChart"></canvas></div>
+                    </div>
+
+                    <!-- Projection -->
+                    <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-4 md:p-6 shadow-xl text-white relative overflow-hidden flex flex-col justify-between">
+                        <div class="absolute right-0 top-0 h-full w-1/2 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                        <div class="z-10">
+                            <p class="text-indigo-100 text-xs font-bold uppercase tracking-widest mb-1">Patrimônio em 12 Meses</p>
+                            <h3 class="text-2xl font-bold text-white mb-1" id="dash-projection">R$ 0</h3>
+                            <p class="text-[10px] text-indigo-200">Baseado na sobra atual</p>
+                        </div>
+                        <div class="h-24 w-full relative z-10 mt-2"><canvas id="projectionChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- KPI STRIP -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="card p-4 border-l-4 border-emerald-500 flex flex-col justify-center dark:bg-slate-800">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Patrimônio Líquido</p>
+                        <p id="kpi-networth" class="text-xl font-black text-slate-800 dark:text-white">R$ 0</p>
+                    </div>
+                    <div class="card p-4 border-l-4 border-amber-500 flex flex-col justify-center dark:bg-slate-800">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Sobra Mensal</p>
+                        <p id="kpi-pot" class="text-xl font-black text-slate-800 dark:text-white">R$ 0</p>
+                    </div>
+                    <div class="card p-4 border-l-4 border-red-500 flex flex-col justify-center dark:bg-slate-800">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Dias p/ Liberdade</p>
+                        <p id="kpi-freedom" class="text-xl font-black text-slate-800 dark:text-white">--</p>
+                    </div>
+                    <!-- Score -->
+                    <div class="card p-4 border-l-4 border-indigo-500 flex flex-col justify-center dark:bg-slate-800 relative group">
+                        <div class="flex justify-between items-center">
+                             <p class="text-[10px] font-bold text-slate-400 uppercase">Empire Score</p>
+                             <i class="ph-fill ph-info text-slate-300 text-xs cursor-help"></i>
+                        </div>
+                        <p id="kpi-score" class="text-xl font-black text-slate-800 dark:text-white">0</p>
+                        <!-- Tooltip -->
+                        <div class="absolute bottom-full right-0 mb-2 w-48 bg-slate-900 text-white text-[10px] p-3 rounded-xl shadow-lg opacity-0 invisible group-hover:visible transition z-50 pointer-events-none">
+                            <p class="font-bold text-indigo-300 border-b border-slate-700 pb-1 mb-2">Pontuação</p>
+                            <div class="flex justify-between mb-1"><span>Finanças</span><span id="sb-finance">0</span></div>
+                            <div class="flex justify-between mb-1"><span>Tarefas</span><span id="sb-tasks">0</span></div>
+                            <div class="flex justify-between"><span>Dívidas</span><span id="sb-debt">0</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Section -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- 1. Radar & Feed -->
+                    <div class="card p-0 overflow-hidden dark:bg-slate-800 flex flex-col h-[400px]">
+                        <div class="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2"><i class="ph-bold ph-radar text-blue-500"></i> Radar & Feed</h3>
+                        </div>
+                        <div class="flex-grow overflow-y-auto p-4 space-y-4">
+                            <div id="dashboard-goals-list" class="space-y-3 pb-4 border-b border-slate-100 dark:border-slate-700"></div>
+                            <div id="dash-feed" class="space-y-3"></div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Actions & Vault -->
+                    <div class="card p-6 dark:bg-slate-800 flex flex-col h-[400px]">
+                        <h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2"><i class="ph-bold ph-lightning text-amber-500"></i> Ações Rápidas</h3>
+                        <div class="grid grid-cols-2 gap-3 mb-6">
+                            <button onclick="quickDeposit()" class="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800 flex flex-col items-center justify-center hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition text-emerald-700 dark:text-emerald-400">
+                                <i class="ph-bold ph-piggy-bank text-2xl mb-1"></i>
+                                <span class="text-xs font-bold">Guardar</span>
+                            </button>
+                            <button onclick="incrementStreak()" class="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 flex flex-col items-center justify-center hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition text-indigo-700 dark:text-indigo-400">
+                                <i class="ph-bold ph-fire text-2xl mb-1"></i>
+                                <span class="text-xs font-bold">Foco Diário</span>
+                            </button>
+                        </div>
+                        <div class="mt-auto bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                            <p class="text-xs font-bold text-slate-400 uppercase mb-1">Total no Cofre</p>
+                            <p class="text-2xl font-black text-slate-800 dark:text-white" id="dash-vault-total">R$ 0</p>
+                        </div>
+                    </div>
+
+                    <!-- 3. Trophy Room -->
+                    <div class="card p-6 dark:bg-slate-800 flex flex-col h-[400px]">
+                        <div class="flex justify-between items-center mb-4 shrink-0">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2"><i class="ph-fill ph-trophy text-amber-500"></i> Conquistas</h3>
+                            <span class="text-xs text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded-full" id="dash-badge-count">0/8</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-3 flex-grow content-start overflow-y-auto pr-1" id="badges-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. FINANCE (Full CRUD) -->
+            <div id="view-finance" class="hidden page-transition space-y-6 max-w-7xl mx-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <!-- Income -->
+                    <div class="lg:col-span-4 card p-6 dark:bg-slate-800 flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2"><i class="ph-bold ph-users-three text-indigo-500"></i> Fontes de Renda</h3>
+                            <button onclick="addIncomeSource()" class="text-xs text-indigo-500 hover:text-indigo-700 font-bold">+ Adicionar</button>
+                        </div>
+                        <div id="income-list" class="space-y-2 flex-grow overflow-y-auto max-h-[300px] mb-4"></div>
+                        <div class="pt-4 border-t border-slate-100 dark:border-slate-700">
+                            <div class="flex justify-between items-end">
+                                <span class="text-xs font-bold text-slate-400 uppercase">Total Líquido</span>
+                                <span id="total-income-display" class="text-xl font-bold text-slate-800 dark:text-white">R$ 0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pots Simulator -->
+                    <div class="lg:col-span-8 card p-6 dark:bg-slate-800">
+                        <h3 class="font-bold text-slate-700 dark:text-slate-200 mb-6 flex items-center gap-2"><i class="ph-bold ph-sliders text-indigo-500"></i> Distribuição dos Potes</h3>
+                        
+                        <!-- Pote 1 -->
+                        <div class="mb-6 border border-slate-200 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-800/50 dark:border-slate-700">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300"><i class="ph-fill ph-house text-slate-400"></i> Pote 1: Sobrevivência (CRUD)</span>
+                                <button onclick="addSurvivalItem()" class="text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 px-2 py-1 rounded hover:text-indigo-500 shadow-sm">+ Item</button>
+                            </div>
+                            <div id="survival-list" class="space-y-2 max-h-40 overflow-y-auto pr-2 mb-2"></div>
+                            <div class="flex justify-between items-center border-t border-slate-200 dark:border-slate-700 pt-2">
+                                <span class="text-xs text-slate-400 uppercase font-bold">Total Fixo</span>
+                                <span id="survival-display" class="font-bold text-slate-700 dark:text-slate-200">R$ 0</span>
+                            </div>
+                        </div>
+
+                        <!-- Pote 3 -->
+                        <div class="mb-6">
+                            <div class="flex justify-between text-sm font-bold text-amber-600 mb-2">
+                                <span class="flex items-center gap-2"><i class="ph-fill ph-smiley text-amber-400"></i> Pote 3: Sanidade</span>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <input type="range" id="sanity-slider" min="0" max="5000" step="50" class="flex-grow h-2 bg-amber-200 rounded-lg appearance-none cursor-pointer accent-amber-500" oninput="syncSlider('sanity')">
+                                <span id="sanity-display" class="w-24 text-right font-bold text-amber-600">R$ 0</span>
+                            </div>
+                        </div>
+
+                        <!-- Result -->
+                        <div class="p-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30 flex justify-between items-center relative overflow-hidden">
+                            <div class="relative z-10">
+                                <p class="text-xs font-bold text-emerald-600 uppercase tracking-wide">Pote do Futuro (Sobra)</p>
+                                <p class="text-[10px] text-emerald-500">Disponível para Metas e Dívidas</p>
+                            </div>
+                            <p id="future-pot-display" class="text-4xl font-black text-emerald-500 relative z-10">R$ 0</p>
+                        </div>
+                    </div>
+
+                    <!-- Vault History -->
+                    <div class="lg:col-span-12 card p-6 dark:bg-slate-800">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2"><i class="ph-fill ph-safe text-blue-500"></i> Extrato do Cofre Real</h3>
+                            <div class="flex gap-2">
+                                <input type="number" id="deposit-input" placeholder="Valor R$" class="w-32 text-sm border border-slate-200 rounded px-3 py-1.5 bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-white">
+                                <button onclick="addDeposit()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-bold shadow-md transition">Depositar</button>
+                            </div>
+                        </div>
+                        <div class="flex flex-col md:flex-row gap-8 items-start">
+                            <div class="w-full md:w-1/3">
+                                <p class="text-xs text-slate-400 uppercase font-bold">Total Acumulado</p>
+                                <p id="vault-total" class="text-4xl font-black text-slate-800 dark:text-white mb-2">R$ 0</p>
+                                <div class="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                                    <div id="vault-progress" class="h-full bg-blue-500 transition-all duration-1000" style="width: 0%"></div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">Meta Global das Metas: <span id="vault-goal">R$ 0</span></p>
+                            </div>
+                            <div class="w-full md:w-2/3 border-l border-slate-100 dark:border-slate-700 pl-0 md:pl-8">
+                                <p class="text-xs font-bold text-slate-400 uppercase mb-3">Histórico Recente</p>
+                                <div id="vault-history" class="space-y-2 max-h-32 overflow-y-auto pr-2 text-sm"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. PROJECTS -->
+            <div id="view-projects" class="hidden page-transition space-y-6 max-w-7xl mx-auto h-[calc(100vh-140px)] flex flex-col">
+                <div class="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar border-b border-slate-200 dark:border-slate-700 shrink-0">
+                    <div id="goal-tabs-container" class="flex gap-2"></div>
+                    <button onclick="promptNewGoal()" class="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-t-lg transition whitespace-nowrap"><i class="ph-bold ph-plus"></i> Nova Meta</button>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow overflow-hidden">
+                    <div class="lg:col-span-8 card p-0 flex flex-col overflow-hidden dark:bg-slate-800 dark:border-slate-700">
+                        <div class="p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex flex-wrap gap-4 justify-between items-center shrink-0">
+                            <div class="flex items-center gap-3">
+                                <button onclick="changeGoalIcon()" class="w-10 h-10 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-xl shadow-sm hover:scale-110 transition-transform cursor-pointer" id="active-goal-icon" title="Clique para mudar o ícone">📦</button>
+                                <div>
+                                    <input type="text" id="active-goal-title" class="bg-transparent border-none p-0 font-bold text-lg text-slate-800 dark:text-white focus:ring-0 w-48 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 rounded px-1" onchange="updateActiveGoal('title', this.value)" placeholder="Nome da meta">
+                                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                                        <i class="ph-bold ph-calendar"></i>
+                                        <input type="date" id="active-goal-date" class="bg-transparent border-none p-0 text-xs font-medium text-slate-500 cursor-pointer w-24 h-4 focus:ring-0" onchange="updateActiveGoal('date', this.value)">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase">Custo Estimado</p>
+                                <p id="active-goal-total" class="text-xl font-bold text-slate-700 dark:text-slate-200">R$ 0</p>
+                            </div>
+                        </div>
+                        <div class="flex-grow overflow-y-auto p-2 space-y-1" id="goal-items-list"></div>
+                        <div class="p-4 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0 flex justify-between items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="goal-safety-buffer" class="rounded text-amber-500 focus:ring-amber-500" onchange="updateActiveGoal('buffer', this.checked)">
+                                <label for="goal-safety-buffer" class="text-xs font-bold text-slate-500">Margem +10%</label>
+                            </div>
+                            <div class="flex gap-2 w-full sm:w-auto">
+                                <button onclick="deleteActiveGoal()" class="px-3 py-2 text-red-400 hover:bg-red-50 rounded-lg transition text-xs font-bold"><i class="ph-bold ph-trash"></i> Excluir</button>
+                                <button onclick="addGoalItem()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition text-xs font-bold shadow-md shadow-indigo-200 dark:shadow-none flex items-center gap-2"><i class="ph-bold ph-plus"></i> Adicionar Item</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
+                        <div class="card p-5 border-t-4 border-t-indigo-500 dark:bg-slate-800 shrink-0">
+                            <h3 class="font-bold text-sm text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2"><i class="ph-fill ph-calculator text-indigo-500"></i> Viabilidade</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between text-xs"><span class="text-slate-500">Meses até a data</span><span id="analysis-months" class="font-bold">0</span></div>
+                                <div class="flex justify-between text-xs"><span class="text-slate-500">Necessidade Mensal</span><span id="analysis-monthly-need" class="font-bold text-amber-600">R$ 0</span></div>
+                                <div id="analysis-verdict" class="p-2 rounded-lg text-xs font-bold text-center bg-slate-100 text-slate-500 mt-2">...</div>
+                            </div>
+                        </div>
+                        <div class="card p-0 flex-grow flex flex-col dark:bg-slate-800 overflow-hidden">
+                            <div class="p-4 border-b border-slate-100 dark:border-slate-700 bg-red-50/30 flex justify-between items-center shrink-0">
+                                <h3 class="font-bold text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2"><i class="ph-fill ph-trend-down text-red-500"></i> Dívidas</h3>
+                                <span id="total-debt-mini" class="text-xs font-bold text-red-500">R$ 0</span>
+                            </div>
+                            <div id="debt-list-mini" class="flex-grow overflow-y-auto p-2 space-y-1"></div>
+                            <div class="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-center shrink-0">
+                                <button onclick="addDebtItem()" class="text-xs font-bold text-slate-400 hover:text-slate-600">+ Adicionar Dívida</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. ROADMAP -->
+            <div id="view-roadmap" class="hidden page-transition max-w-4xl mx-auto pb-12">
+                <div class="flex items-center justify-between mb-8">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-2xl"><i class="ph-fill ph-map-trifold"></i></div>
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800 dark:text-white">Jornada do Império</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">Construa seu mapa, passo a passo.</p>
+                        </div>
+                    </div>
+                    <button onclick="promptNewPhase()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-md transition flex items-center gap-2"><i class="ph-bold ph-plus-circle"></i> Nova Fase</button>
+                </div>
+                <div class="relative space-y-8 before:absolute before:inset-0 before:ml-6 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-500 before:via-slate-200 before:to-transparent dark:before:via-slate-700" id="timeline-container"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- DATA & CONFIG ---
+        const DEFAULT_DATA = {
+            activeGoalId: 0, vaultTotal: 2500, xp: 150, streak: 3,
+            vaultHistory: [{date: new Date().toISOString(), amount: 2500}],
+            incomeSources: [ {id:1, name:'Salário Marcelino', value: 4500}, {id:2, name:'Salário Luiza', value: 3200} ],
+            survivalBreakdown: [ 
+                {id:1, name:'Aluguel+Cond', value:1800}, 
+                {id:2, name:'Mercado', value:1200},
+                {id:3, name:'Luz/Net/Água', value:450},
+                {id:4, name:'Transporte', value:300}
+            ],
+            goals: [
+                { 
+                    id: 0, title: "Casa Nova", icon: "📦", targetDate: "2026-06-01", useBuffer: true, 
+                    items: [
+                        { id: 1, name: 'Caução Aluguel (3x)', category: 'Taxas', cost: 5400 },
+                        { id: 2, name: 'Geladeira', category: 'Eletro', cost: 3500 },
+                        { id: 3, name: 'Cama Box', category: 'Móvel', cost: 2200 }
+                    ]
+                },
+                { 
+                    id: 1, title: "Casamento", icon: "💍", targetDate: "2026-05-10", useBuffer: false, 
+                    items: [
+                        { id: 4, name: 'Taxas Cartório', category: 'Taxas', cost: 600 },
+                        { id: 5, name: 'Almoço', category: 'Festa', cost: 1500 }
+                    ]
+                }
+            ],
+            debts: [
+                { id: 201, name: 'Cartão Crédito', total: 2100 },
+                { id: 202, name: 'Empréstimo Pessoal', total: 800 }
+            ],
+            financials: { sanity: 600 },
+            timelinePhases: [
+                { id: 'p0', phase: "Fase 0: Organização", icon: "ph-flag", color: "bg-slate-500", tasks: [{ id: 't01', text: 'Levantar todas as dívidas', checked: true }, { id: 't02', text: 'Definir teto de gastos', checked: true }] },
+                { id: 'p1', phase: "Fase 1: Faxina", icon: "ph-broom", color: "bg-red-500", tasks: [{ id: 't11', text: 'Quitar dívida menor', checked: false }, { id: 't12', text: 'Renegociar juros', checked: false }] },
+                { id: 'p2', phase: "Fase 2: Construção", icon: "ph-bricks", color: "bg-indigo-500", tasks: [{ id: 't21', text: 'Juntar 50% da meta da casa', checked: false }] }
+            ],
+            badges: []
+        };
+
+        const CAT_GOAL = ['Móvel', 'Eletro', 'Taxas', 'Serviço', 'Viagem', 'Festa', 'Outro'];
+        const BADGES_DEF = [
+            {id:'saver_1k', icon:'ph-coin', color:'text-amber-500', title:'Poupador I', desc:'Juntou R$ 1.000', req: d=>d.vaultTotal>=1000},
+            {id:'saver_10k', icon:'ph-coins', color:'text-amber-600', title:'Investidor', desc:'Juntou R$ 10.000', req: d=>d.vaultTotal>=10000},
+            {id:'debt_free', icon:'ph-confetti', color:'text-emerald-500', title:'Livre!', desc:'Zerou dívidas', req: d=>d.debts.length>0 && d.debts.reduce((a,b)=>a+b.total,0)===0},
+            {id:'score_800', icon:'ph-crown', color:'text-purple-500', title:'Imperador', desc:'Score > 800', req: ()=>{ const el=document.getElementById('kpi-score'); return el && parseInt(el.innerText)>=800; }},
+            {id:'planner', icon:'ph-list-checks', color:'text-indigo-500', title:'Estrategista', desc:'5 tarefas feitas', req: d=>{let c=0; d.timelinePhases.forEach(p=>p.tasks.forEach(t=>{if(t.checked)c++})); return c>=5;}}
+        ];
+
+        let appData = {};
+        let charts = {};
+        let modalCallback = null;
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            initTheme();
+            initChartsDefaults();
+            refreshAll();
+            switchTab('dashboard');
+            showToast('Sistema carregado!', 'success');
+        });
+
+        // --- CORE ---
+        let saveTimeout = null;
+        
+        function loadData() {
+            const stored = localStorage.getItem('imperioData_v16');
+            if (stored) {
+                try {
+                    appData = JSON.parse(stored);
+                    // Validate data structure
+                    if(!appData.incomeSources || !appData.goals) {
+                        appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+                    }
+                } catch(err) {
+                    console.error('Error loading data:', err);
+                    appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+                }
+            } else {
+                appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+            }
+        }
+        
+        function saveData(showFeedback = true) {
+            // Debounce saves to prevent excessive writes
+            if(saveTimeout) clearTimeout(saveTimeout);
+            
+            saveTimeout = setTimeout(() => {
+                try {
+                    localStorage.setItem('imperioData_v16', JSON.stringify(appData));
+                    if(showFeedback) showToast('💾 Salvo', 'success');
+                    refreshAll();
+                } catch(err) {
+                    console.error('Error saving data:', err);
+                    showToast('❌ Erro ao salvar', 'error');
+                }
+            }, 300);
+        }
+        function switchTab(tabId) {
+            document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+            const view = document.getElementById(`view-${tabId}`);
+            if(view) view.classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const nav = document.getElementById(`nav-${tabId}`);
+            if(nav) nav.classList.add('active');
+            
+            // Update page title
+            const titles = {
+                'dashboard': 'Visão Geral',
+                'finance': 'Financeiro',
+                'projects': 'Metas & Sonhos',
+                'roadmap': 'Jornada'
+            };
+            const titleEl = document.getElementById('page-title');
+            if(titleEl) titleEl.innerText = titles[tabId] || 'Empire OS';
+            
+            if(tabId === 'projects') renderGoalTabs();
+        }
+        
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            if(menu) menu.classList.toggle('hidden');
+        }
+        function initTheme() { if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); }
+        function toggleTheme() { document.documentElement.classList.toggle('dark'); localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light'); }
+        function initChartsDefaults() { Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif"; }
+
+        // --- REFRESH ---
+        function refreshAll() {
+            renderIncomeList();
+            renderSurvivalList();
+            updatePots(); 
+            renderDebts();
+            renderTimeline();
+            renderGoalTabs();
+            renderVault();
+            updateDashboard();
+            checkBadges();
+            updateLevel();
+        }
+
+        // --- DASHBOARD ---
+        function updateDashboard() {
+            const income = appData.incomeSources.reduce((a,b)=>a+b.value,0);
+            const survival = appData.survivalBreakdown.reduce((a,b)=>a+b.value,0);
+            const pot = income - survival - appData.financials.sanity;
+            const totalDebt = appData.debts.reduce((a,b)=>a+b.total, 0);
+            const netWorth = appData.vaultTotal - totalDebt;
+            const daysFreedom = pot > 0 && totalDebt > 0 ? Math.ceil(totalDebt/pot)*30 : 0;
+
+            // KPIs
+            const setEl = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; }
+            setEl('dash-income', fmtMoney(income));
+            setEl('kpi-networth', fmtMoney(netWorth));
+            setEl('kpi-pot', fmtMoney(pot));
+            setEl('kpi-freedom', totalDebt===0 ? "LIVRE!" : (pot<=0 ? "∞" : daysFreedom+" dias"));
+
+            // Score
+            let totalT=0, doneT=0; appData.timelinePhases.forEach(p=>p.tasks.forEach(t=>{totalT++; if(t.checked) doneT++}));
+            const score = Math.round((pot>0?Math.min(400,(pot/(income||1))*1000):0) + (totalT?(doneT/totalT)*400:0) + (totalDebt===0?200:Math.max(0,200-(totalDebt/100))));
+            setEl('kpi-score', score);
+
+            // Tooltip breakdown
+            setEl('sb-finance', Math.round(pot>0?Math.min(400,(pot/income)*1000):0));
+            const barFin = document.getElementById('bar-finance'); if(barFin) barFin.style.width = ((pot>0?Math.min(400,(pot/income)*1000):0)/400)*100+'%';
+            setEl('sb-tasks', Math.round((totalT?(doneT/totalT)*400:0)));
+            const barTask = document.getElementById('bar-tasks'); if(barTask) barTask.style.width = ((totalT?(doneT/totalT)*400:0)/400)*100+'%';
+            setEl('sb-debt', Math.round((totalDebt===0?200:Math.max(0,200-(totalDebt/100)))));
+            const barDebt = document.getElementById('bar-debt'); if(barDebt) barDebt.style.width = ((totalDebt===0?200:Math.max(0,200-(totalDebt/100)))/200)*100+'%';
+
+            // Projection
+            const proj = appData.vaultTotal + (pot * 12);
+            setEl('dash-projection', fmtMoney(proj));
+            updateProjectionChart(appData.vaultTotal, pot);
+            updateCashflowChart(income, survival, appData.financials.sanity, pot);
+            
+            // Radar
+            const radarEl = document.getElementById('dashboard-goals-list');
+            if(radarEl) {
+                radarEl.innerHTML = appData.goals.map(g => {
+                    const total = g.items.reduce((a,b)=>a+b.cost,0)*(g.useBuffer?1.1:1);
+                    const globalNeed = appData.goals.reduce((acc, gl) => acc + gl.items.reduce((a,b)=>a+b.cost,0)*(gl.useBuffer?1.1:1), 0);
+                    const prog = globalNeed > 0 ? (appData.vaultTotal / globalNeed) * 100 : 0;
+                    return `<div><div class="flex justify-between text-xs mb-1"><span class="font-bold text-slate-700 dark:text-slate-300">${g.icon} ${g.title}</span><span class="text-slate-500">${Math.min(100, Math.round(prog))}%</span></div><div class="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width: ${Math.min(100, prog)}%"></div></div></div>`;
+                }).join('');
+            }
+            
+            // Feed
+            const feedEl = document.getElementById('dash-feed');
+            if(feedEl) {
+                let html = '';
+                if(pot < 0) html += `<div class="flex items-center gap-2 p-2 bg-red-50 text-red-600 rounded text-xs font-bold border border-red-100 mb-2"><i class="ph-bold ph-warning"></i> Atenção: Orçamento Negativo!</div>`;
+                appData.timelinePhases.forEach(p => p.tasks.forEach(t => { if(!t.checked) html += `<div class="flex items-center gap-3 p-2 border-b border-slate-50 dark:border-slate-800 text-xs"><div class="w-2 h-2 rounded-full bg-blue-400"></div><span class="text-slate-600 dark:text-slate-400 flex-grow">${t.text}</span></div>`; }));
+                feedEl.innerHTML = html || '<div class="text-center text-xs text-slate-400">Tudo em dia!</div>';
+            }
+            
+            setEl('dash-vault-total', fmtMoney(appData.vaultTotal));
+        }
+
+        function updateLevel() {
+             const level = Math.floor(appData.xp / 1000) + 1;
+             const xpCurr = appData.xp % 1000;
+             const rankEl = document.getElementById('user-rank');
+             if(rankEl) rankEl.innerText = `Nível ${level}`;
+             
+             const xpBarEl = document.getElementById('xp-bar');
+             if(xpBarEl) xpBarEl.style.width = (xpCurr/10)+'%';
+             
+             const xpBarSideEl = document.getElementById('xp-bar-side');
+             if(xpBarSideEl) xpBarSideEl.style.width = (xpCurr/10)+'%';
+             
+             const xpValSideEl = document.getElementById('xp-val-side');
+             if(xpValSideEl) xpValSideEl.innerText = `${xpCurr}/1000`;
+        }
+
+        // --- CHARTS ---
+        function updateCashflowChart(inc, surv, san, pot) {
+            const ctx = document.getElementById('cashflowChart');
+            if(!ctx) return;
+            
+            try {
+                if(charts.cash) charts.cash.destroy();
+                charts.cash = new Chart(ctx.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: ['Entrada', 'Saídas'],
+                        datasets: [
+                            { label: 'Renda', data: [inc || 0, 0], backgroundColor: '#6366f1', borderRadius: 4 },
+                            { label: 'Fixo', data: [0, surv || 0], backgroundColor: '#64748b', borderRadius: 4 },
+                            { label: 'Lazer', data: [0, san || 0], backgroundColor: '#f59e0b', borderRadius: 4 },
+                            { label: 'Futuro', data: [0, Math.max(0, pot || 0)], backgroundColor: '#10b981', borderRadius: 4 }
+                        ]
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        scales: { 
+                            x: { stacked: true, grid: {display: false} }, 
+                            y: { stacked: true, display: false } 
+                        }, 
+                        plugins: { 
+                            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                            tooltip: { enabled: true, mode: 'index', intersect: false }
+                        },
+                        animation: { duration: 500 }
+                    }
+                });
+            } catch(err) {
+                console.error('Error updating cashflow chart:', err);
+            }
+        }
+
+        function updateProjectionChart(start, monthly) {
+            const ctx = document.getElementById('projectionChart');
+            if(!ctx) return;
+            
+            try {
+                if(charts.proj) charts.proj.destroy();
+                const s = start || 0;
+                const m = monthly || 0;
+                charts.proj = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: ['Hoje', '3M', '6M', '12M'],
+                        datasets: [{
+                            label: 'Patrimônio',
+                            data: [s, s + (m * 3), s + (m * 6), s + (m * 12)],
+                            borderColor: '#fbbf24', 
+                            backgroundColor: 'rgba(251, 191, 36, 0.1)', 
+                            fill: true, 
+                            tension: 0.4, 
+                            pointRadius: 3,
+                            pointBackgroundColor: '#fbbf24',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        plugins: {
+                            legend: {display: false},
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: {
+                                    label: (context) => `Patrimônio: ${fmtMoney(context.parsed.y)}`
+                                }
+                            }
+                        }, 
+                        scales: {x: {display: false}, y: {display: false}},
+                        animation: { duration: 500 }
+                    }
+                });
+            } catch(err) {
+                console.error('Error updating projection chart:', err);
+            }
+        }
+
+        // --- FINANCE CRUD ---
+        function renderIncomeList() {
+            const el = document.getElementById('income-list');
+            if(el) el.innerHTML = appData.incomeSources.map((inc, i) => `
+                <div class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg mb-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group hover-lift border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <i class="ph-bold ph-currency-circle-dollar text-indigo-500 text-lg"></i>
+                    <input value="${inc.name}" onchange="appData.incomeSources[${i}].name=this.value;saveData()" class="bg-transparent text-sm flex-grow outline-none text-slate-700 dark:text-slate-300 font-medium px-2 py-1 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome da fonte">
+                    <span class="text-xs text-slate-400">R$</span>
+                    <input type="number" value="${inc.value}" onchange="appData.incomeSources[${i}].value=parseFloat(this.value)||0;saveData()" class="bg-white dark:bg-slate-800 text-sm text-right w-24 font-bold outline-none text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 focus:border-indigo-500" placeholder="0.00" step="0.01">
+                    <button onclick="deleteIncome(${i})" class="text-slate-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all" title="Remover fonte">×</button>
+                </div>`).join('');
+            const total = appData.incomeSources.reduce((a,b)=>a+b.value,0);
+            const totalEl = document.getElementById('total-income-display');
+            if(totalEl) totalEl.innerText = fmtMoney(total);
+        }
+        
+        function deleteIncome(i) {
+            const item = appData.incomeSources[i];
+            if(confirm(`Remover "${item.name}"?`)) {
+                appData.incomeSources.splice(i, 1);
+                saveData();
+                showToast('🗑️ Fonte de renda removida', 'info');
+            }
+        }
+        function addIncomeSource() { 
+            appData.incomeSources.push({id:Date.now(), name:'Nova Renda', value:0}); 
+            saveData(); 
+            showToast('✨ Fonte de renda adicionada!', 'success');
+            const list = document.getElementById('income-list');
+            if(list) list.lastElementChild?.classList.add('animate-slide-up');
+        }
+
+        function renderSurvivalList() {
+            const el = document.getElementById('survival-list');
+            if(el) el.innerHTML = appData.survivalBreakdown.map((item, i) => `
+                <div class="flex items-center gap-2 text-xs border-b border-slate-100 dark:border-slate-700 pb-2 mb-2 group hover:bg-slate-50 dark:hover:bg-slate-900/30 px-2 py-1 rounded transition-colors">
+                    <i class="ph-bold ph-house text-slate-400 text-sm"></i>
+                    <input value="${item.name}" onchange="appData.survivalBreakdown[${i}].name=this.value; saveData()" class="flex-grow bg-transparent outline-none text-slate-600 dark:text-slate-400 font-medium px-1 py-0.5 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome da despesa">
+                    <span class="text-slate-400">R$</span>
+                    <input type="number" value="${item.value}" onchange="appData.survivalBreakdown[${i}].value=parseFloat(this.value)||0; saveData()" class="w-20 text-right bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none font-bold text-slate-600 dark:text-slate-400 px-2 py-0.5 focus:border-indigo-500" placeholder="0.00" step="0.01">
+                    <button onclick="deleteSurvival(${i})" class="text-slate-300 hover:text-red-500 px-1 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all" title="Remover despesa">×</button>
+                </div>`).join('');
+            
+            const total = appData.survivalBreakdown.reduce((a,b)=>a+b.value,0);
+            if(document.getElementById('survival-display')) document.getElementById('survival-display').innerText = fmtMoney(total);
+            
+            const modalList = document.getElementById('calc-items-list');
+            if(modalList) modalList.innerHTML = appData.survivalBreakdown.map((item, i) => `
+                <div class="flex items-center gap-2 p-2 border border-slate-100 dark:border-slate-700 rounded mb-2 hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
+                    <input value="${item.name}" onchange="appData.survivalBreakdown[${i}].name=this.value; saveData()" class="flex-grow bg-transparent outline-none text-sm font-medium text-slate-700 dark:text-slate-300 px-2 py-1 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Item">
+                    <span class="text-xs text-slate-400">R$</span>
+                    <input type="number" value="${item.value}" onchange="appData.survivalBreakdown[${i}].value=parseFloat(this.value)||0; saveData(); renderSurvivalList()" class="w-24 text-right bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm font-bold text-slate-700 dark:text-slate-300 focus:border-indigo-500" placeholder="0.00" step="0.01">
+                    <button onclick="deleteSurvival(${i})" class="text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Remover">×</button>
+                </div>`).join('');
+            const calcTotalEl = document.getElementById('calc-total');
+            if(calcTotalEl) calcTotalEl.innerText = fmtMoney(total);
+        }
+        
+        function deleteSurvival(i) {
+            const item = appData.survivalBreakdown[i];
+            if(confirm(`Remover "${item.name}"?`)) {
+                appData.survivalBreakdown.splice(i, 1);
+                saveData();
+                showToast('🗑️ Despesa removida', 'info');
+            }
+        }
+        function addSurvivalItem() { 
+            appData.survivalBreakdown.push({id:Date.now(), name:'Item', value:0}); 
+            saveData(); 
+            showToast('📋 Gasto adicionado!', 'success');
+        }
+        function toggleCalc(show) { const m=document.getElementById('calc-modal'); if(m) { m.classList.toggle('hidden', !show); if(show) renderSurvivalList(); } }
+        function applyCalc() { toggleCalc(false); }
+        
+        function syncSlider(t) { 
+            if(t==='sanity') { appData.financials.sanity = parseFloat(document.getElementById('sanity-slider').value); saveData(); }
+        }
+        
+        function updatePots() {
+            const sanity = appData.financials.sanity;
+            if(document.getElementById('sanity-slider')) document.getElementById('sanity-slider').value = sanity;
+            if(document.getElementById('sanity-display')) document.getElementById('sanity-display').innerText = fmtMoney(sanity);
+            if(document.getElementById('future-pot-display')) document.getElementById('future-pot-display').innerText = fmtMoney(appData.incomeSources.reduce((a,b)=>a+b.value,0) - appData.survivalBreakdown.reduce((a,b)=>a+b.value,0) - sanity);
+        }
+
+        // --- PROJECTS (SAFE RENDER) ---
+        function promptNewGoal() { 
+            showInputModal("Nome da Meta", val => { 
+                if(val && val.trim()) { 
+                    appData.goals.push({
+                        id:Date.now(), 
+                        title:val.trim(), 
+                        icon:"🎯", 
+                        targetDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0], 
+                        useBuffer:false, 
+                        items:[]
+                    }); 
+                    appData.activeGoalId = appData.goals.length - 1; 
+                    saveData(); 
+                    showToast('🎯 Meta criada com sucesso!', 'success');
+                    confetti({ particleCount: 30, spread: 50 });
+                } 
+            }); 
+        }
+        
+        function renderGoalTabs() {
+            const c = document.getElementById('goal-tabs-container');
+            if(!c) return;
+            if(!appData.goals || appData.goals.length === 0) {
+                c.innerHTML = '<p class="text-sm text-slate-400 px-4">Nenhuma meta criada ainda</p>';
+                return;
+            }
+            c.innerHTML = appData.goals.map((g, i) => `
+                <button onclick="appData.activeGoalId=${i}; saveData(); renderGoalTabs()" class="px-4 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap transition ${i===appData.activeGoalId ? 'bg-white dark:bg-slate-800 text-indigo-600 border-t-2 border-indigo-500' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}">
+                    ${g.icon} ${g.title}
+                </button>`).join('');
+            renderActiveGoal();
+        }
+        
+        function renderActiveGoal() {
+            if(!appData.goals || appData.goals.length === 0) return;
+            const goal = appData.goals[appData.activeGoalId];
+            if(!goal) {
+                appData.activeGoalId = 0;
+                if(!appData.goals[0]) return;
+                return renderActiveGoal();
+            }
+            
+            const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; }
+            const safeText = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; }
+            
+            safeSet('active-goal-title', goal.title);
+            safeText('active-goal-icon', goal.icon);
+            
+            // Format date properly
+            const dateInput = document.getElementById('active-goal-date');
+            if(dateInput && goal.targetDate) {
+                const date = new Date(goal.targetDate + 'T00:00:00');
+                const formattedDate = date.toISOString().split('T')[0];
+                dateInput.value = formattedDate;
+            }
+            
+            const buf = document.getElementById('goal-safety-buffer'); 
+            if(buf) buf.checked = goal.useBuffer;
+            
+            const list = document.getElementById('goal-items-list');
+            if(list) {
+                let total = 0;
+                list.innerHTML = goal.items.map((item, i) => {
+                    total += item.cost;
+                    return `
+                    <div class="flex gap-2 p-2 border-b border-slate-100 dark:border-slate-700 items-center group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                        <input value="${item.name}" onchange="updateGoalItem(${i},'name',this.value)" class="flex-grow bg-transparent outline-none text-sm text-slate-600 dark:text-slate-300 px-2 py-1 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome do item">
+                        <select onchange="updateGoalItem(${i},'category',this.value)" class="text-xs bg-transparent border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-slate-500 dark:text-slate-400 focus:border-indigo-500 outline-none">
+                            ${CAT_GOAL.map(cat => `<option value="${cat}" ${item.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                        </select>
+                        <input type="number" value="${item.cost}" onchange="updateGoalItem(${i},'cost',parseFloat(this.value)||0)" class="w-24 text-right bg-transparent border border-slate-200 dark:border-slate-600 rounded outline-none text-sm font-bold px-2 py-1 focus:border-indigo-500" placeholder="0.00">
+                        <button onclick="deleteGoalItem(${i})" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all px-2 py-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded" title="Remover item">×</button>
+                    </div>`;
+                }).join('');
+                const finalTotal = goal.useBuffer ? total * 1.1 : total;
+                safeText('active-goal-total', fmtMoney(finalTotal));
+                
+                const verdict = document.getElementById('analysis-verdict');
+                if(verdict) {
+                    const income = appData.incomeSources.reduce((a,b)=>a+b.value,0);
+                    const survival = appData.survivalBreakdown.reduce((a,b)=>a+b.value,0);
+                    const pot = income - survival - appData.financials.sanity;
+                    const months = Math.max(1, (new Date(goal.targetDate) - new Date()) / (1000*60*60*24*30));
+                    const mNeed = finalTotal/months;
+                    safeText('analysis-months', Math.ceil(months) + " meses");
+                    safeText('analysis-monthly-need', fmtMoney(mNeed));
+                    
+                    if(pot >= mNeed) { verdict.className="p-2 rounded-lg text-xs font-bold text-center bg-emerald-100 text-emerald-700 mt-2"; verdict.innerText = "✅ Viável!"; }
+                    else { verdict.className="p-2 rounded-lg text-xs font-bold text-center bg-red-100 text-red-700 mt-2"; verdict.innerText = `⚠️ Faltam R$ ${Math.round(mNeed-pot)}`; }
+                }
+            }
+        }
+        function updateGoalItem(i,f,v) { appData.goals[appData.activeGoalId].items[i][f] = v; saveData(); }
+        function addGoalItem() { 
+            if(!appData.goals[appData.activeGoalId]) return;
+            appData.goals[appData.activeGoalId].items.push({id:Date.now(), name:'Novo item', category:'Outro', cost:0}); 
+            saveData(); 
+            showToast('➕ Item adicionado à meta!', 'success');
+        }
+        
+        function deleteGoalItem(i) { 
+            const item = appData.goals[appData.activeGoalId]?.items[i];
+            if(!item) return;
+            const listEl = document.getElementById('goal-items-list');
+            const itemEl = listEl?.children[i];
+            if(itemEl) {
+                itemEl.classList.add('animate-delete');
+                setTimeout(() => {
+                    appData.goals[appData.activeGoalId].items.splice(i, 1); 
+                    saveData();
+                    showToast('🗑️ Item removido', 'info');
+                }, 300);
+            } else {
+                appData.goals[appData.activeGoalId].items.splice(i, 1); 
+                saveData();
+            }
+        }
+        
+        function deleteActiveGoal() { 
+            if(confirm("Tem certeza que deseja deletar esta meta?")) { 
+                const goalName = appData.goals[appData.activeGoalId]?.title || 'Meta';
+                appData.goals.splice(appData.activeGoalId, 1); 
+                appData.activeGoalId = 0; 
+                saveData(); 
+                showToast(`🗑️ ${goalName} deletada`, 'info');
+            } 
+        }
+        function updateActiveGoal(f,v) { 
+            const g = appData.goals[appData.activeGoalId]; 
+            if(!g) return;
+            if(f === 'title') g.title = v; 
+            if(f === 'date') g.targetDate = v; 
+            if(f === 'buffer') g.useBuffer = v; 
+            saveData(); 
+        }
+        
+        function changeGoalIcon() {
+            const icons = ['🎯', '🏠', '✈️', '🚗', '💍', '🎓', '💰', '🏖️', '📱', '💻', '🎮', '📚', '🎨', '🏋️', '🎸', '📦', '🌟', '🔥', '💎', '🏆'];
+            const currentIcon = appData.goals[appData.activeGoalId]?.icon || '📦';
+            const currentIndex = icons.indexOf(currentIcon);
+            const nextIndex = (currentIndex + 1) % icons.length;
+            appData.goals[appData.activeGoalId].icon = icons[nextIndex];
+            saveData();
+            showToast(`Ícone alterado para ${icons[nextIndex]}`, 'success');
+        }
+
+        // --- DEBTS ---
+        function renderDebts() {
+            const list = document.getElementById('debt-list-mini');
+            if(!list) return;
+            let total = 0;
+            list.innerHTML = appData.debts.map((d,i) => {
+                total += d.total;
+                return `
+                <div class="flex items-center justify-between p-2 border-b border-slate-100 dark:border-slate-700 text-xs group hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors rounded">
+                    <i class="ph-bold ph-warning text-red-400 text-sm mr-1"></i>
+                    <input value="${d.name}" onchange="appData.debts[${i}].name=this.value;saveData()" class="bg-transparent outline-none font-medium text-slate-600 dark:text-slate-300 flex-grow px-1 py-0.5 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome da dívida">
+                    <span class="text-slate-400 mx-1">R$</span>
+                    <input type="number" value="${d.total}" onchange="appData.debts[${i}].total=parseFloat(this.value)||0;saveData()" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none font-bold text-red-500 text-right w-24 px-2 py-0.5 focus:border-red-500" placeholder="0.00" step="0.01">
+                    <button onclick="deleteDebt(${i})" class="text-slate-300 hover:text-red-500 px-1 py-0.5 ml-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all" title="Remover dívida">×</button>
+                </div>`;
+            }).join('');
+            const totalEl = document.getElementById('total-debt-mini');
+            if(totalEl) totalEl.innerText = fmtMoney(total);
+        }
+        
+        function deleteDebt(i) {
+            const debt = appData.debts[i];
+            if(confirm(`Remover dívida "${debt.name}"?`)) {
+                appData.debts.splice(i, 1);
+                saveData();
+                showToast('🗑️ Dívida removida', 'info');
+            }
+        }
+        function addDebtItem() { 
+            appData.debts.push({id:Date.now(), name:'Nova Dívida', total:0}); 
+            saveData(); 
+            showToast('📊 Dívida registrada', 'info');
+        }
+
+        // --- TIMELINE ---
+        function promptNewPhase() { 
+            showInputModal("Nome da Nova Fase", v => { 
+                if(v && v.trim()) { 
+                    const colors = ['bg-slate-500', 'bg-indigo-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-red-500', 'bg-purple-500'];
+                    const icons = ['ph-flag', 'ph-rocket', 'ph-target', 'ph-star', 'ph-lightbulb', 'ph-check-circle'];
+                    appData.timelinePhases.push({
+                        id: Date.now(), 
+                        phase: v.trim(), 
+                        icon: icons[appData.timelinePhases.length % icons.length], 
+                        color: colors[appData.timelinePhases.length % colors.length], 
+                        tasks: []
+                    }); 
+                    saveData(); 
+                    showToast('🚀 Nova fase criada!', 'success');
+                    confetti({ particleCount: 30, spread: 40 });
+                } 
+            }); 
+        }
+        function renderTimeline() {
+            const el = document.getElementById('timeline-container');
+            if(!el) return;
+            el.innerHTML = appData.timelinePhases.map((p, i) => `
+                <div class="relative pl-8 pb-8 border-l-2 border-slate-200 dark:border-slate-700 last:border-0 ml-4 animate-slide-up">
+                    <div class="absolute -left-[11px] top-0 w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 ${p.color} text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform"><i class="ph-bold ${p.icon} text-xs"></i></div>
+                    <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all hover-lift">
+                        <div class="flex justify-between items-center mb-3">
+                            <input value="${p.phase}" onchange="appData.timelinePhases[${i}].phase=this.value; saveData()" class="font-bold text-sm bg-transparent outline-none text-slate-800 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-900 px-2 py-1 rounded transition-colors" placeholder="Nome da fase">
+                            <div class="flex gap-2">
+                                <button onclick="deletePhase(${i})" class="text-slate-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Deletar fase"><i class="ph-bold ph-trash text-sm"></i></button>
+                                <button onclick="addPhaseTask(${i})" class="text-indigo-500 hover:text-indigo-600 font-bold text-xs px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all">+ Passo</button>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            ${p.tasks.length > 0 ? p.tasks.map((t, ti) => `
+                            <div class="flex items-center gap-2 group hover:bg-slate-50 dark:hover:bg-slate-900/50 px-2 py-1.5 rounded transition-colors">
+                                <input type="checkbox" ${t.checked?'checked':''} onchange="toggleTask(${i},${ti})" class="accent-indigo-500 cursor-pointer w-4 h-4 rounded focus:ring-2 focus:ring-indigo-500">
+                                <input value="${t.text}" onchange="appData.timelinePhases[${i}].tasks[${ti}].text=this.value; saveData()" class="text-xs bg-transparent outline-none flex-grow ${t.checked?'line-through text-slate-400':'text-slate-600 dark:text-slate-300 font-medium'} px-1 py-0.5 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Descreva a tarefa">
+                                <button onclick="deleteTask(${i},${ti})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 text-xs px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Remover tarefa">×</button>
+                            </div>`).join('') : '<p class="text-xs text-slate-400 italic px-2 py-1">Nenhuma tarefa ainda</p>'}
+                        </div>
+                    </div>
+                </div>`).join('');
+        }
+        
+        function deleteTask(phaseIdx, taskIdx) {
+            const task = appData.timelinePhases[phaseIdx]?.tasks[taskIdx];
+            if(!task) return;
+            if(confirm(`Remover tarefa "${task.text}"?`)) {
+                appData.timelinePhases[phaseIdx].tasks.splice(taskIdx, 1);
+                saveData();
+                showToast('🗑️ Tarefa removida', 'info');
+            }
+        }
+        function toggleTask(p,t) { 
+            appData.timelinePhases[p].tasks[t].checked = !appData.timelinePhases[p].tasks[t].checked; 
+            if(appData.timelinePhases[p].tasks[t].checked) { appData.xp += 100; confetti({particleCount:40,spread:50,origin:{y:0.7}}); }
+            saveData(); 
+        }
+        function addPhaseTask(i) { 
+            if(!appData.timelinePhases[i]) return;
+            appData.timelinePhases[i].tasks.push({id: Date.now(), text: "Novo passo", checked: false}); 
+            saveData(); 
+            showToast('✅ Tarefa adicionada!', 'success');
+        }
+        
+        function deletePhase(i) { 
+            const phase = appData.timelinePhases[i];
+            if(!phase) return;
+            if(confirm(`Deletar a fase "${phase.phase}"? Todas as tarefas serão removidas.`)) { 
+                appData.timelinePhases.splice(i, 1); 
+                saveData(); 
+                showToast('🗑️ Fase removida', 'info');
+            } 
+        }
+
+        // --- BADGES ---
+        function checkBadges() {
+            const c = document.getElementById('badges-container');
+            if(c) {
+                const unlocked = new Set(appData.badges);
+                c.innerHTML = BADGES_DEF.map(b => {
+                    const has = b.req ? b.req(appData) : false;
+                    if(has && !unlocked.has(b.id)) { appData.badges.push(b.id); confetti(); }
+                    const unlockedNow = appData.badges.includes(b.id);
+                    return `<div class="flex items-center justify-center p-2 rounded bg-slate-50 dark:bg-slate-900 ${unlockedNow?'shadow-sm badge-unlocked':'opacity-30 grayscale'} text-2xl group relative cursor-help">
+                        <i class="ph-fill ${b.icon} ${b.color}"></i>
+                        <div class="absolute bottom-full mb-2 w-24 bg-slate-900 text-white text-[10px] p-2 rounded shadow opacity-0 invisible group-hover:visible z-50 pointer-events-none">${b.title}</div>
+                    </div>`;
+                }).join('');
+                const count = document.getElementById('dash-badge-count');
+                if(count) count.innerText = `${appData.badges.length}/${BADGES_DEF.length}`;
+            }
+        }
+
+        // --- ACTIONS ---
+        function quickDeposit() { 
+            showInputModal("Valor para Guardar (R$)", v => { 
+                const amount = parseFloat(v);
+                if(v && amount > 0) { 
+                    appData.vaultTotal += amount; 
+                    appData.vaultHistory.push({ date: new Date().toISOString(), amount });
+                    appData.xp += Math.min(100, Math.floor(amount / 10)); 
+                    confetti({ particleCount: 50, spread: 70 }); 
+                    saveData(); 
+                    showToast(`💰 R$ ${amount.toFixed(2)} guardado!`, 'success');
+                } else {
+                    showToast('❌ Valor inválido', 'error');
+                }
+            }); 
+        }
+        
+        function incrementStreak() { 
+            appData.streak++; 
+            appData.xp += 20; 
+            saveData(); 
+            confetti({ particleCount: 20, spread: 30 }); 
+            showToast(`🔥 Sequência de ${appData.streak} dias!`, 'success');
+        }
+
+        // --- MODAL UTILS ---
+        function showInputModal(title, callback) {
+            const modalTitle = document.getElementById('modal-title');
+            const modalInput = document.getElementById('modal-input');
+            const modal = document.getElementById('input-modal');
+            
+            if(modalTitle) modalTitle.innerText = title;
+            if(modalInput) {
+                modalInput.value = '';
+                modalInput.focus();
+            }
+            if(modal) modal.classList.remove('hidden');
+            modalCallback = callback;
+        }
+        
+        function closeInputModal() { 
+            const modal = document.getElementById('input-modal');
+            if(modal) modal.classList.add('hidden'); 
+            modalCallback = null;
+        }
+        
+        // Handle Enter key in modal
+        document.addEventListener('DOMContentLoaded', () => {
+            const modalInput = document.getElementById('modal-input');
+            if(modalInput) {
+                modalInput.addEventListener('keypress', (e) => {
+                    if(e.key === 'Enter') {
+                        e.preventDefault();
+                        document.getElementById('modal-confirm-btn')?.click();
+                    }
+                });
+            }
+            
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            if(confirmBtn) {
+                confirmBtn.onclick = () => { 
+                    if(modalCallback) {
+                        const input = document.getElementById('modal-input');
+                        modalCallback(input?.value || ''); 
+                    }
+                    closeInputModal(); 
+                };
+            }
+            
+            // Close modal on backdrop click
+            const modal = document.getElementById('input-modal');
+            if(modal) {
+                modal.addEventListener('click', (e) => {
+                    if(e.target === modal) closeInputModal();
+                });
+            }
+            
+            // ESC key to close modals
+            document.addEventListener('keydown', (e) => {
+                if(e.key === 'Escape') {
+                    closeInputModal();
+                    const calcModal = document.getElementById('calc-modal');
+                    if(calcModal && !calcModal.classList.contains('hidden')) {
+                        toggleCalc(false);
+                    }
+                }
+            });
+            
+            // Prevent form submission on Enter in number inputs
+            document.addEventListener('keypress', (e) => {
+                if(e.key === 'Enter' && e.target.type === 'number') {
+                    e.preventDefault();
+                    e.target.blur();
+                }
+            });
+        });
+
+        // --- UTILS ---
+        function fmtMoney(n) { 
+            if(isNaN(n)) n = 0;
+            return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); 
+        }
+        
+        function showToast(message = 'Salvo', type = 'success') { 
+            const t = document.getElementById('last-saved'); 
+            if(t) { 
+                t.innerText = message;
+                t.className = `text-xs font-bold flex items-center gap-1 transition-opacity px-3 py-1.5 rounded-full ${
+                    type === 'success' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
+                    type === 'error' ? 'text-red-600 bg-red-50 dark:bg-red-900/20' :
+                    'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                }`;
+                t.style.opacity = 1; 
+                t.classList.add('animate-slide-up');
+                setTimeout(() => {
+                    t.style.opacity = 0;
+                    t.classList.remove('animate-slide-up');
+                }, 2500); 
+            } 
+        }
+        function downloadData() { 
+            try {
+                const dataStr = JSON.stringify(appData, null, 2);
+                const blob = new Blob([dataStr], {type: "application/json"}); 
+                const a = document.createElement('a'); 
+                a.href = URL.createObjectURL(blob); 
+                const date = new Date().toISOString().split('T')[0];
+                a.download = `empire_os_backup_${date}.json`; 
+                a.click(); 
+                showToast('💾 Backup criado!', 'success');
+            } catch(err) {
+                showToast('❌ Erro ao criar backup', 'error');
+                console.error(err);
+            }
+        }
+        
+        function uploadData(input) { 
+            const f = input.files[0]; 
+            if(!f) return; 
+            const r = new FileReader(); 
+            r.onload = e => { 
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if(confirm("Restaurar dados do backup? Isso irá sobrescrever os dados atuais.")) { 
+                        appData = data; 
+                        saveData(); 
+                        showToast('✅ Dados restaurados!', 'success');
+                        setTimeout(() => location.reload(), 1500);
+                    }
+                } catch(err) {
+                    showToast('❌ Arquivo inválido', 'error');
+                    console.error(err);
+                }
+            }; 
+            r.readAsText(f); 
+        }
+        
+        function resetAllData() { 
+            if(confirm("⚠️ Tem certeza que deseja RESETAR todos os dados? Esta ação não pode ser desfeita!")) {
+                if(confirm("Última confirmação: Todos os dados serão perdidos. Continuar?")) {
+                    localStorage.removeItem('imperioData_v16'); 
+                    showToast('🔄 Resetando...', 'info');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            } 
+        }
+        function toggleTheme() { document.documentElement.classList.toggle('dark'); localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light'); }
+        function animateValue(obj, start, end, duration) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                obj.innerHTML = Math.floor(progress * (end - start) + start);
+                if (progress < 1) window.requestAnimationFrame(step);
+            };
+            window.requestAnimationFrame(step);
+        }
+        function updateChart(id, type, labels, data, colors) {
+            const el = document.getElementById(id);
+            if(!el) return;
+            if(charts[id]) charts[id].destroy();
+            const ctx = el.getContext('2d');
+            charts[id] = new Chart(ctx, { type, data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } } });
+        }
+        function initChartsDefaults() { Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif"; }
+        function addDeposit() {
+            const input = document.getElementById('deposit-input');
+            if(!input || !input.value) return;
+            const amount = parseFloat(input.value);
+            if(amount <= 0 || isNaN(amount)) {
+                alert('Digite um valor válido!');
+                return;
+            }
+            appData.vaultTotal += amount;
+            appData.vaultHistory.push({ date: new Date().toISOString(), amount });
+            appData.xp += Math.min(100, Math.floor(amount / 10));
+            input.value = '';
+            confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
+            saveData();
+        }
+
+        function renderVault() {
+            const vaultTotalEl = document.getElementById('vault-total');
+            if(vaultTotalEl) vaultTotalEl.innerText = fmtMoney(appData.vaultTotal);
+            
+            const totalGoal = appData.goals.reduce((acc, g) => acc + g.items.reduce((a,b)=>a+b.cost,0)*(g.useBuffer?1.1:1), 0) + appData.debts.reduce((a,b)=>a+b.total,0);
+            if(document.getElementById('vault-goal')) document.getElementById('vault-goal').innerText = fmtMoney(totalGoal);
+            
+            const prog = totalGoal > 0 ? (appData.vaultTotal / totalGoal) * 100 : 0;
+            if(document.getElementById('vault-progress')) document.getElementById('vault-progress').style.width = Math.min(100, prog) + '%';
+
+            const hist = document.getElementById('vault-history');
+            if(hist) {
+                if(appData.vaultHistory.length > 0) {
+                    hist.innerHTML = appData.vaultHistory.slice(-3).reverse().map(h => `<li class="flex justify-between border-b border-slate-100 dark:border-slate-800 pb-1 last:border-0 text-xs"><span>${new Date(h.date).toLocaleDateString()}</span><span class="font-bold text-emerald-500">+${fmtMoney(h.amount)}</span></li>`).join('');
+                } else { hist.innerHTML = '<li class="italic text-slate-400">Sem histórico.</li>'; }
+            }
+        }
+    </script>
+</body>
+</html>
