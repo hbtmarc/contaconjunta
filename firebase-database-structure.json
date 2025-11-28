@@ -1,0 +1,30 @@
+{
+  "usuarios_app": {
+    "marcelino": {
+      "nome": "Marcelino",
+      "senha": "180818",
+      "perfil": "usuario_A"
+    },
+    "luiza": {
+      "nome": "Luiza",
+      "senha": "250519",
+      "perfil": "usuario_B"
+    },
+    "casal": {
+      "nome": "Casal",
+      "senha": "241025",
+      "perfil": "admin"
+    }
+  },
+  "transactions": {
+    "marcelino": {
+      "_readme": "Transações pessoais do Marcelino serão armazenadas aqui"
+    },
+    "luiza": {
+      "_readme": "Transações pessoais da Luiza serão armazenadas aqui"
+    },
+    "casalusuario": {
+      "_readme": "Transações da conta conjunta do casal serão armazenadas aqui"
+    }
+  }
+}

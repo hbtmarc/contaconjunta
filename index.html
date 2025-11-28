@@ -25,8 +25,7 @@
         "lucide-react": "https://esm.sh/lucide-react@0.363.0?external=react",
         "date-fns": "https://esm.sh/date-fns@3.6.0",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js"
+        "firebase/database": "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js"
       }
     }
     </script>
@@ -80,11 +79,10 @@
     <div id="root"></div>
     
     <script type="text/babel" data-type="module">
-      import React, { useState, useEffect, useMemo } from 'react';
+      import React, { useState, useEffect, useMemo, useRef } from 'react';
       import { createRoot } from 'react-dom/client';
       import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
       import { create } from 'zustand';
-      import { persist } from 'zustand/middleware';
       import clsx from 'clsx';
       import { twMerge } from 'tailwind-merge';
       import { 
@@ -96,28 +94,23 @@
         X,
         ArrowUpCircle,
         ArrowDownCircle,
-        Wallet
+        Wallet,
+        Calendar,
+        CreditCard
       } from 'lucide-react';
       import { format, parseISO } from 'date-fns';
       import { initializeApp } from 'firebase/app';
       import { 
-        getAuth, 
-        signInWithPopup, 
-        GoogleAuthProvider,
-        signOut as firebaseSignOut,
-        onAuthStateChanged 
-      } from 'firebase/auth';
-      import { 
-        getFirestore, 
-        collection, 
-        doc,
-        getDocs, 
-        setDoc,
-        deleteDoc,
-        query, 
-        where,
-        onSnapshot
-      } from 'firebase/firestore';
+        getDatabase,
+        ref,
+        get,
+        set,
+        push,
+        update,
+        remove,
+        onValue,
+        child
+      } from 'firebase/database';
       
       // ============================================================================
       // FIREBASE CONFIGURATION
@@ -134,29 +127,52 @@
        * 5. Cole aqui substituindo os valores de exemplo
        */
 const firebaseConfig = {
-
   apiKey: "AIzaSyAIXU9oqsbzFHEQ0Vdx2uBpTrdGk2YSOS8",
-
   authDomain: "contaconjunta-marc35.firebaseapp.com",
-
+  databaseURL: "https://contaconjunta-marc35-default-rtdb.firebaseio.com",
   projectId: "contaconjunta-marc35",
-
   storageBucket: "contaconjunta-marc35.firebasestorage.app",
-
   messagingSenderId: "193293125640",
-
   appId: "1:193293125640:web:7952ebbb4f3bd5fb4a69bd",
-
   measurementId: "G-VJ61KTVCV8"
-
 };
 
       
       // Initialize Firebase
       const app = initializeApp(firebaseConfig);
-      const auth = getAuth(app);
-      const db = getFirestore(app);
-      const googleProvider = new GoogleAuthProvider();
+      const database = getDatabase(app);
+      
+      /**
+       * 📊 ESTRUTURA DO FIREBASE REALTIME DATABASE
+       * 
+       * usuarios_app/
+       *   ├─ marcelino/
+       *   │    └─ senha: "senha123"
+       *   ├─ luiza/
+       *   │    └─ senha: "senha123"
+       *   └─ casal/
+       *        └─ senha: "senha123"
+       * 
+       * transactions/
+       *   ├─ marcelino/
+       *   │    └─ {transactionId}: { ...transactionData, ownerId: "marcelino" }
+       *   ├─ luiza/
+       *   │    └─ {transactionId}: { ...transactionData, ownerId: "luiza" }
+       *   └─ casalusuario/
+       *        └─ {transactionId}: { ...transactionData, ownerId: "casalusuario" }
+       * 
+       * LOGIN COMO 'casal':
+       *   - Perfil Admin: Vê TODAS transações (marcelino + luiza + casalusuario)
+       *   - Perfil Conta Conjunta: Vê APENAS transações de casalusuario
+       * 
+       * 🔒 ARQUITETURA ZERO-LOCALSTORAGE:
+       *   - TUDO é armazenado no Firebase Realtime Database
+       *   - Zustand é usado apenas para estado em memória durante a sessão
+       *   - Ao recarregar: Login → Carrega do Firebase → Popula Zustand
+       *   - Ao criar: Add no Zustand → useEffect detecta → Salva no Firebase
+       *   - Real-time listener sincroniza mudanças de outros dispositivos
+       *   - Logout limpa completamente o estado em memória
+       */
       
       // ============================================================================
       // UTILITY FUNCTIONS
@@ -299,6 +315,20 @@ const firebaseConfig = {
       const validateInstallmentsTotal = (installments, expectedTotal) => {
         const calculatedTotal = installments.reduce((sum, inst) => sum + inst.amount, 0);
         return Math.abs(calculatedTotal - expectedTotal) < 0.01; // Allow 1 cent tolerance
+      };
+      
+      /**
+       * Get owner display name from ownerId
+       * @param {string} ownerId
+       * @returns {string}
+       */
+      const getOwnerName = (ownerId) => {
+        const ownerMap = {
+          'marcelino': 'Marcelino',
+          'luiza': 'Luiza',
+          'casalusuario': 'Casal'
+        };
+        return ownerMap[ownerId] || ownerId;
       };
       
       // ============================================================================
@@ -482,7 +512,8 @@ const firebaseConfig = {
        * @property {string} category - Transaction category
        * @property {'credit'|'debit'} paymentMethod - Payment method
        * @property {TransactionInstallments|null} installments - Installment info (null for single payment)
-       * @property {string} userId - User ID who owns this transaction
+       * @property {string} userId - User ID who created this transaction (for auth)
+       * @property {string} ownerId - Owner ID ('marcelino', 'luiza', or 'casalusuario' for shared)
        * @property {string} [fitId] - OFX FITID for duplicate detection
        */
       
@@ -503,9 +534,10 @@ const firebaseConfig = {
       
       /**
        * @typedef {Object} User
-       * @property {string} id - User ID
+       * @property {string} id - User ID ('marcelino', 'luiza', 'casal', 'casalusuario')
        * @property {string} email - User email
        * @property {string} name - User display name
+       * @property {'user_a'|'user_b'|'admin'|'usuario_c'} type - User type/role
        */
       
       /**
@@ -532,12 +564,41 @@ const firebaseConfig = {
       /** @typedef {AppState & AppActions} AppStore */
       
       // ============================================================================
-      // ZUSTAND STORE WITH PERSISTENCE
+      // SESSION MANAGEMENT (HYBRID APPROACH)
+      // ============================================================================
+      /**
+       * 🔥 ARQUITETURA HÍBRIDA:
+       * - Sessão do usuário (currentUser) → localStorage (mantém login)
+       * - Transações e dados → Firebase Realtime Database (fonte única)
+       * - Melhor UX + Integridade de dados
+       */
+      
+      const SESSION_KEY = 'financial-app-session';
+      
+      const SessionManager = {
+        save: (user) => {
+          if (user) {
+            localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+          }
+        },
+        load: () => {
+          try {
+            const data = localStorage.getItem(SESSION_KEY);
+            return data ? JSON.parse(data) : null;
+          } catch {
+            return null;
+          }
+        },
+        clear: () => {
+          localStorage.removeItem(SESSION_KEY);
+        }
+      };
+      
+      // ============================================================================
+      // ZUSTAND STORE (IN-MEMORY ONLY - NO PERSISTENCE)
       // ============================================================================
       
-      const useAppStore = create(
-        persist(
-          (set, get) => ({
+      const useAppStore = create((set, get) => ({
             // ========== STATE ==========
             currentUser: null,
             transactions: [],
@@ -557,11 +618,41 @@ const firebaseConfig = {
             addTransaction: (transaction) => {
               const newTransaction = {
                 ...transaction,
-                id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                id: transaction.id || `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
               };
               
+              console.log('➕ Adding transaction to store:', {
+                id: newTransaction.id,
+                ownerId: newTransaction.ownerId,
+                userId: newTransaction.userId,
+                description: newTransaction.description
+              });
+              
+              set((state) => {
+                // Check if transaction already exists (prevent duplicates)
+                const exists = state.transactions.some(t => t.id === newTransaction.id);
+                if (exists) {
+                  console.warn('⚠️ Transaction already exists, skipping:', newTransaction.id);
+                  return state;
+                }
+                
+                return {
+                  transactions: [...state.transactions, newTransaction]
+                };
+              });
+            },
+            
+            /**
+             * Update transaction by ID
+             * @param {string} id
+             * @param {Partial<Transaction>} updates
+             */
+            updateTransaction: (id, updates) => {
+              console.log('✏️ Updating transaction in store:', id, updates);
               set((state) => ({
-                transactions: [...state.transactions, newTransaction]
+                transactions: state.transactions.map(t => 
+                  t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+                )
               }));
             },
             
@@ -576,16 +667,11 @@ const firebaseConfig = {
             },
             
             /**
-             * Update transaction by ID
-             * @param {string} id
-             * @param {Partial<Transaction>} updates
+             * Clear all transactions
              */
-            updateTransaction: (id, updates) => {
-              set((state) => ({
-                transactions: state.transactions.map(t => 
-                  t.id === id ? { ...t, ...updates } : t
-                )
-              }));
+            clearTransactions: () => {
+              console.log('🧹 Clearing all transactions from store');
+              set({ transactions: [] });
             },
             
             /**
@@ -602,11 +688,16 @@ const firebaseConfig = {
             },
             
             /**
-             * Set current user
+             * Set current user (also saves to localStorage for session persistence)
              * @param {User|null} user
              */
             setCurrentUser: (user) => {
               set({ currentUser: user });
+              if (user) {
+                SessionManager.save(user);
+              } else {
+                SessionManager.clear();
+              }
             },
             
             /**
@@ -640,32 +731,31 @@ const firebaseConfig = {
               set((state) => ({
                 accounts: state.accounts.filter(a => a.id !== id)
               }));
+            },
+            
+            /**
+             * Clear all transactions (used on logout)
+             */
+            clearTransactions: () => {
+              set({ transactions: [] });
             }
-          }),
-          {
-            name: 'financial-app-storage', // LocalStorage key
-            version: 1,
-            // Optionally, you can add migration logic here
-            migrate: (persistedState, version) => {
-              // Handle migrations between versions if needed
-              return persistedState;
-            }
-          }
-        )
-      );
+          }));
       
       // ============================================================================
-      // FIREBASE SYNC HOOK
+      // FIREBASE SYNC HOOK (REALTIME DATABASE)
       // ============================================================================
       
       /**
-       * Custom hook for Firebase authentication and Firestore synchronization
+       * Custom hook for Firebase Realtime Database authentication and synchronization
        * @returns {Object} Auth state and sync functions
        */
       const useFirebaseSync = () => {
         const [isInitialized, setIsInitialized] = useState(false);
         const [isSyncing, setIsSyncing] = useState(false);
         const [syncError, setSyncError] = useState(null);
+        const syncedTransactionIds = useRef(new Set());
+        const isInitializedRef = useRef(false);
+        const hasAttemptedAutoLogin = useRef(false);
         
         const { 
           currentUser, 
@@ -673,32 +763,92 @@ const firebaseConfig = {
           transactions, 
           addTransaction,
           removeTransaction,
-          updateTransaction
+          updateTransaction,
+          clearTransactions
         } = useAppStore();
         
-        // ========== AUTHENTICATION ==========
+        // ========== MANUAL AUTHENTICATION ==========
         
         /**
-         * Sign in with Google popup
+         * Sign in with ID and password (manual authentication)
+         * @param {string} userId - User ID (marcelino, luiza, or casal)
+         * @param {string} password - User password
+         * @param {string} profile - Profile type for 'casal': 'admin' or 'usuario_c'
          */
-        const signInWithGoogle = async () => {
+        const signIn = async (userId, password, profile = null) => {
           try {
             setSyncError(null);
-            const result = await signInWithPopup(auth, googleProvider);
-            const user = result.user;
+            setIsSyncing(true);
             
-            setCurrentUser({
-              id: user.uid,
-              email: user.email,
-              name: user.displayName || user.email
-            });
+            // Get user data from database
+            const userRef = ref(database, `usuarios_app/${userId}`);
+            const snapshot = await get(userRef);
             
-            console.log('✅ Logged in:', user.email);
+            if (!snapshot.exists()) {
+              throw new Error('Usuário não encontrado');
+            }
+            
+            const userData = snapshot.val();
+            
+            // Verify password
+            if (userData.senha !== password) {
+              throw new Error('Senha incorreta');
+            }
+            
+            // Define user profile based on ID
+            let userName = '';
+            let userType = '';
+            let storageId = userId; // ID for database storage
+            
+            if (userId === 'marcelino') {
+              userName = 'Marcelino';
+              userType = 'user_a';
+            } else if (userId === 'luiza') {
+              userName = 'Luiza';
+              userType = 'user_b';
+            } else if (userId === 'casal') {
+              // Casal can be admin OR usuario_c
+              if (profile === 'admin') {
+                userName = 'Casal (Admin)';
+                userType = 'admin';
+                storageId = 'casal'; // Admin doesn't have own storage
+              } else {
+                userName = 'Casal';
+                userType = 'usuario_c';
+                storageId = 'casalusuario'; // Own storage for joint finances
+              }
+            } else {
+              userName = userId;
+              userType = 'unknown';
+            }
+            
+            const user = {
+              id: storageId,
+              email: userData.email || `${userId}@local`,
+              name: userName,
+              type: userType
+            };
+            
+            // Load transactions from database FIRST
+            await loadTransactionsFromDatabase(storageId, userType);
+            
+            // Mark as initialized FIRST (before setting user to trigger useEffect)
+            isInitializedRef.current = true;
+            
+            // Set user (this also saves to localStorage and triggers useEffect)
+            setCurrentUser(user);
+            setIsInitialized(true);
+            
+            console.log('✅ Logged in:', userName, '| User ID:', storageId, '| Type:', userType);
+            console.log('✅ System initialized (ref):', isInitializedRef.current);
+            
             return user;
           } catch (error) {
             console.error('Login error:', error);
             setSyncError(`Erro ao fazer login: ${error.message}`);
             throw error;
+          } finally {
+            setIsSyncing(false);
           }
         };
         
@@ -707,46 +857,113 @@ const firebaseConfig = {
          */
         const signOut = async () => {
           try {
-            await firebaseSignOut(auth);
-            setCurrentUser(null);
-            console.log('✅ Logged out');
+            clearTransactions();
+            syncedTransactionIds.current.clear();
+            isInitializedRef.current = false;
+            hasAttemptedAutoLogin.current = false;
+            setCurrentUser(null); // This also clears localStorage
+            setIsInitialized(false);
+            console.log('✅ Logged out and session cleared');
           } catch (error) {
             console.error('Logout error:', error);
             setSyncError(`Erro ao fazer logout: ${error.message}`);
           }
         };
         
-        // ========== FIRESTORE SYNC ==========
+        // ========== REALTIME DATABASE SYNC ==========
         
         /**
-         * Load transactions from Firestore
+         * Load transactions from Realtime Database
+         * For admin (casal), loads from both marcelino and luiza
          */
-        const loadTransactionsFromFirestore = async (userId) => {
+        const loadTransactionsFromDatabase = async (userId, userType) => {
           if (!userId) return;
           
           try {
             setIsSyncing(true);
             setSyncError(null);
             
-            const transactionsRef = collection(db, 'transactions');
-            const q = query(transactionsRef, where('userId', '==', userId));
-            const snapshot = await getDocs(q);
+            // Clear local transactions before loading
+            clearTransactions();
+            syncedTransactionIds.current.clear();
             
-            console.log(`📥 Loading ${snapshot.size} transactions from Firestore`);
+            const allTransactions = [];
             
-            // Clear local transactions and load from cloud
-            const store = useAppStore.getState();
-            store.transactions = [];
+            // Admin loads from both users
+            if (userType === 'admin') {
+              console.log('📥 Loading transactions from both users (Admin mode)');
+              
+              // Load marcelino's transactions
+              const marcelinoRef = ref(database, 'transactions/marcelino');
+              const marcelinoSnapshot = await get(marcelinoRef);
+              if (marcelinoSnapshot.exists()) {
+                const data = marcelinoSnapshot.val();
+                Object.entries(data).forEach(([key, value]) => {
+                  allTransactions.push({
+                    ...value,
+                    id: key,
+                    ownerId: value.ownerId || 'marcelino'
+                  });
+                });
+              }
+              
+              // Load luiza's transactions
+              const luizaRef = ref(database, 'transactions/luiza');
+              const luizaSnapshot = await get(luizaRef);
+              if (luizaSnapshot.exists()) {
+                const data = luizaSnapshot.val();
+                Object.entries(data).forEach(([key, value]) => {
+                  allTransactions.push({
+                    ...value,
+                    id: key,
+                    ownerId: value.ownerId || 'luiza'
+                  });
+                });
+              }
+              
+              // Load casalusuario's transactions (joint account)
+              const casalUsuarioRef = ref(database, 'transactions/casalusuario');
+              const casalUsuarioSnapshot = await get(casalUsuarioRef);
+              if (casalUsuarioSnapshot.exists()) {
+                const data = casalUsuarioSnapshot.val();
+                Object.entries(data).forEach(([key, value]) => {
+                  allTransactions.push({
+                    ...value,
+                    id: key,
+                    ownerId: value.ownerId || 'casalusuario'
+                  });
+                });
+              }
+              
+              console.log(`📥 Loaded ${allTransactions.length} transactions from all users`);
+            } else {
+              // Regular user loads only their own
+              const transactionsRef = ref(database, `transactions/${userId}`);
+              const snapshot = await get(transactionsRef);
+              
+              if (snapshot.exists()) {
+                const data = snapshot.val();
+                Object.entries(data).forEach(([key, value]) => {
+                  allTransactions.push({
+                    ...value,
+                    id: key,
+                    ownerId: value.ownerId || userId
+                  });
+                });
+                
+                console.log(`📥 Loaded ${allTransactions.length} transactions for ${userId}`);
+              } else {
+                console.log('📥 No transactions found in database');
+              }
+            }
             
-            snapshot.forEach((doc) => {
-              const data = doc.data();
-              addTransaction({
-                ...data,
-                id: doc.id
-              });
+            // Add all transactions to store and mark as synced
+            allTransactions.forEach((transaction) => {
+              addTransaction(transaction);
+              syncedTransactionIds.current.add(transaction.id);
             });
             
-            console.log('✅ Transactions loaded from cloud');
+            console.log('✅ Transactions loaded from database');
           } catch (error) {
             console.error('Error loading transactions:', error);
             setSyncError(`Erro ao carregar dados: ${error.message}`);
@@ -756,20 +973,48 @@ const firebaseConfig = {
         };
         
         /**
-         * Save transaction to Firestore
+         * Save transaction to Realtime Database
+         * Admin saves to the owner's path (marcelino or luiza)
          */
-        const saveTransactionToFirestore = async (transaction) => {
-          if (!currentUser) return;
+        const saveTransactionToDatabase = async (transaction) => {
+          if (!currentUser) {
+            console.warn('⚠️ No current user, skipping save');
+            return;
+          }
           
           try {
-            const transactionRef = doc(db, 'transactions', transaction.id);
-            await setDoc(transactionRef, {
-              ...transaction,
+            // Determine the storage path based on ownerId
+            // Admin transactions are saved under the actual owner (marcelino or luiza)
+            const storagePath = currentUser.type === 'admin' 
+              ? transaction.ownerId 
+              : currentUser.id;
+            
+            const finalOwnerId = transaction.ownerId || currentUser.id;
+            
+            const dbPath = `transactions/${storagePath}/${transaction.id}`;
+            
+            console.log('💾 Saving transaction:', {
+              id: transaction.id,
+              path: dbPath,
               userId: currentUser.id,
-              updatedAt: new Date().toISOString()
+              ownerId: finalOwnerId,
+              userType: currentUser.type,
+              description: transaction.description
             });
             
-            console.log('✅ Transaction synced to Firestore:', transaction.id);
+            const transactionRef = ref(database, dbPath);
+            const dataToSave = {
+              ...transaction,
+              userId: currentUser.id,
+              ownerId: finalOwnerId,
+              updatedAt: new Date().toISOString()
+            };
+            
+            console.log('📤 Data being sent to Firebase:', dataToSave);
+            
+            await set(transactionRef, dataToSave);
+            
+            console.log('✅ Transaction synced successfully to:', dbPath);
           } catch (error) {
             console.error('Error saving transaction:', error);
             setSyncError(`Erro ao salvar: ${error.message}`);
@@ -777,100 +1022,208 @@ const firebaseConfig = {
         };
         
         /**
-         * Delete transaction from Firestore
+         * Update transaction in Realtime Database
          */
-        const deleteTransactionFromFirestore = async (transactionId) => {
+        const updateTransactionInDatabase = async (transactionId, updates, ownerId = null) => {
           if (!currentUser) return;
           
           try {
-            const transactionRef = doc(db, 'transactions', transactionId);
-            await deleteDoc(transactionRef);
-            console.log('✅ Transaction deleted from Firestore:', transactionId);
+            const storagePath = currentUser.type === 'admin' && ownerId 
+              ? ownerId 
+              : currentUser.id;
+            
+            const transactionRef = ref(database, `transactions/${storagePath}/${transactionId}`);
+            await update(transactionRef, {
+              ...updates,
+              updatedAt: new Date().toISOString()
+            });
+            
+            console.log('✅ Transaction updated in database:', transactionId, 'at', storagePath);
+          } catch (error) {
+            console.error('Error updating transaction:', error);
+            setSyncError(`Erro ao atualizar: ${error.message}`);
+            throw error;
+          }
+        };
+        
+        /**
+         * Delete transaction from Realtime Database
+         * Admin deletes from the owner's path (marcelino or luiza)
+         */
+        const deleteTransactionFromDatabase = async (transactionId, ownerId = null) => {
+          if (!currentUser) return;
+          
+          try {
+            // Determine the storage path based on ownerId (for admin) or currentUser.id
+            const storagePath = currentUser.type === 'admin' && ownerId 
+              ? ownerId 
+              : currentUser.id;
+            
+            const transactionRef = ref(database, `transactions/${storagePath}/${transactionId}`);
+            await remove(transactionRef);
+            console.log('✅ Transaction deleted from database:', transactionId, 'from', storagePath);
           } catch (error) {
             console.error('Error deleting transaction:', error);
             setSyncError(`Erro ao deletar: ${error.message}`);
           }
         };
         
-        // Debounced sync function (wait 2 seconds after last change)
-        const debouncedSync = useMemo(
-          () => debounce((transaction) => {
-            if (currentUser) {
-              saveTransactionToFirestore(transaction);
-            }
-          }, 2000),
-          [currentUser]
-        );
-        
         // ========== EFFECTS ==========
         
-        // Monitor auth state changes
+        // Auto-login from saved session
         useEffect(() => {
-          const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-              setCurrentUser({
-                id: user.uid,
-                email: user.email,
-                name: user.displayName || user.email
-              });
-              
-              // Load transactions when user logs in
-              if (!isInitialized) {
-                loadTransactionsFromFirestore(user.uid);
+          if (!currentUser && !hasAttemptedAutoLogin.current) {
+            hasAttemptedAutoLogin.current = true;
+            const savedUser = SessionManager.load();
+            if (savedUser) {
+              console.log('🔄 Restoring session for:', savedUser.name);
+              setCurrentUser(savedUser);
+              // Load transactions for restored user
+              loadTransactionsFromDatabase(savedUser.id, savedUser.type).then(() => {
+                isInitializedRef.current = true;
                 setIsInitialized(true);
-              }
-            } else {
-              setCurrentUser(null);
-              setIsInitialized(false);
+                console.log('✅ Session restored and data loaded');
+              });
+            }
+          }
+        }, []);
+        
+        // Log initialization status
+        useEffect(() => {
+          console.log('🔧 Firebase Sync Status:', {
+            currentUser: currentUser?.name || 'None',
+            userId: currentUser?.id || 'None',
+            isInitialized,
+            transactionsCount: transactions.length,
+            syncedCount: syncedTransactionIds.current.size
+          });
+        }, [currentUser, isInitialized, transactions.length]);
+        
+        // Monitor transaction changes and sync to database immediately
+        useEffect(() => {
+          const debugInfo = {
+            hasUser: !!currentUser,
+            userName: currentUser?.name,
+            refInitialized: isInitializedRef.current,
+            txCount: transactions.length,
+            syncedCount: syncedTransactionIds.current.size
+          };
+          
+          console.log('🔍 Sync Effect Triggered:', debugInfo);
+          
+          if (!currentUser) {
+            console.warn('⏸️ BLOCKED: No user logged in');
+            return;
+          }
+          
+          if (!isInitializedRef.current) {
+            console.warn('⏸️ BLOCKED: Not initialized (waiting for data load)');
+            return;
+          }
+          
+          console.log('✅ Sync checks passed! Processing', transactions.length, 'transactions...');
+          
+          // Find new transactions that haven't been synced yet
+          let syncedCount = 0;
+          transactions.forEach((transaction) => {
+            if (!syncedTransactionIds.current.has(transaction.id)) {
+              console.log('🆕 NEW TRANSACTION FOUND:', transaction.id, transaction.description);
+              syncedTransactionIds.current.add(transaction.id);
+              saveTransactionToDatabase(transaction);
+              syncedCount++;
             }
           });
           
-          return () => unsubscribe();
-        }, []);
-        
-        // Monitor transaction changes and sync to Firestore
-        useEffect(() => {
-          if (!currentUser || !isInitialized) return;
-          
-          // Get the last transaction (most recently added/updated)
-          const lastTransaction = transactions[transactions.length - 1];
-          
-          if (lastTransaction) {
-            debouncedSync(lastTransaction);
+          if (syncedCount === 0) {
+            console.log('ℹ️ No new transactions to sync');
+          } else {
+            console.log(`📤 Syncing ${syncedCount} new transaction(s)...`);
           }
-        }, [transactions, currentUser, isInitialized, debouncedSync]);
+        }, [transactions, currentUser]);
         
-        // Real-time listener for Firestore changes (optional)
+        // Real-time listener for database changes (DISABLED to prevent loops)
         useEffect(() => {
           if (!currentUser || !isInitialized) return;
           
-          const transactionsRef = collection(db, 'transactions');
-          const q = query(transactionsRef, where('userId', '==', currentUser.id));
+          console.log('⚠️ Real-time listener DISABLED to prevent sync loops');
+          return; // TEMPORARILY DISABLED
           
-          const unsubscribe = onSnapshot(q, (snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-              const data = { ...change.doc.data(), id: change.doc.id };
-              
-              if (change.type === 'added') {
-                // Check if transaction already exists locally
-                const exists = transactions.some(t => t.id === data.id);
-                if (!exists) {
-                  console.log('📥 New transaction from cloud:', data.id);
-                  addTransaction(data);
-                }
-              } else if (change.type === 'modified') {
-                console.log('📝 Transaction updated from cloud:', data.id);
-                updateTransaction(data.id, data);
-              } else if (change.type === 'removed') {
-                console.log('🗑️ Transaction deleted from cloud:', data.id);
-                removeTransaction(data.id);
+          const unsubscribeList = [];
+          
+          if (currentUser.type === 'admin') {
+            // Admin: listen to both marcelino and luiza paths
+            const marcelinoRef = ref(database, 'transactions/marcelino');
+            const luizaRef = ref(database, 'transactions/luiza');
+            
+            const handleSnapshot = (snapshot, ownerId) => {
+              if (snapshot.exists()) {
+                const data = snapshot.val();
+                const cloudTransactions = Object.entries(data).map(([key, value]) => ({
+                  ...value,
+                  id: key,
+                  ownerId: value.ownerId || ownerId
+                }));
+                
+                // Sync cloud transactions with local store
+                cloudTransactions.forEach((cloudTxn) => {
+                  const localExists = transactions.some(t => t.id === cloudTxn.id);
+                  if (!localExists) {
+                    console.log('📥 New transaction from database:', cloudTxn.id, 'owner:', cloudTxn.ownerId);
+                    addTransaction(cloudTxn);
+                    syncedTransactionIds.current.add(cloudTxn.id);
+                  }
+                });
               }
+            };
+            
+            const unsubMarcelino = onValue(marcelinoRef, (snapshot) => handleSnapshot(snapshot, 'marcelino'), (error) => {
+              console.error('Database listener error (marcelino):', error);
             });
-          }, (error) => {
-            console.error('Firestore listener error:', error);
-          });
+            
+            const unsubLuiza = onValue(luizaRef, (snapshot) => handleSnapshot(snapshot, 'luiza'), (error) => {
+              console.error('Database listener error (luiza):', error);
+            });
+            
+            // Also listen to casalusuario (joint account)
+            const casalUsuarioRef = ref(database, 'transactions/casalusuario');
+            const unsubCasalUsuario = onValue(casalUsuarioRef, (snapshot) => handleSnapshot(snapshot, 'casalusuario'), (error) => {
+              console.error('Database listener error (casalusuario):', error);
+            });
+            
+            unsubscribeList.push(unsubMarcelino, unsubLuiza, unsubCasalUsuario);
+          } else {
+            // Regular user: listen only to their own path
+            const transactionsRef = ref(database, `transactions/${currentUser.id}`);
+            
+            const unsubscribe = onValue(transactionsRef, (snapshot) => {
+              if (snapshot.exists()) {
+                const data = snapshot.val();
+                const cloudTransactions = Object.entries(data).map(([key, value]) => ({
+                  ...value,
+                  id: key,
+                  ownerId: value.ownerId || currentUser.id
+                }));
+                
+                // Sync cloud transactions with local store
+                cloudTransactions.forEach((cloudTxn) => {
+                  const localExists = transactions.some(t => t.id === cloudTxn.id);
+                  if (!localExists) {
+                    console.log('📥 New transaction from database:', cloudTxn.id);
+                    addTransaction(cloudTxn);
+                    syncedTransactionIds.current.add(cloudTxn.id);
+                  }
+                });
+              }
+            }, (error) => {
+              console.error('Database listener error:', error);
+            });
+            
+            unsubscribeList.push(unsubscribe);
+          }
           
-          return () => unsubscribe();
+          return () => {
+            unsubscribeList.forEach(unsub => unsub());
+          };
         }, [currentUser, isInitialized]);
         
         return {
@@ -878,12 +1231,140 @@ const firebaseConfig = {
           isInitialized,
           isSyncing,
           syncError,
-          signInWithGoogle,
+          signIn,
           signOut,
-          loadTransactionsFromFirestore,
-          saveTransactionToFirestore,
-          deleteTransactionFromFirestore
+          loadTransactionsFromDatabase,
+          saveTransactionToDatabase,
+          updateTransactionInDatabase,
+          deleteTransactionFromDatabase
         };
+      };
+      
+      // ============================================================================
+      // LOGIN MODAL COMPONENT
+      // ============================================================================
+      
+      const LoginModal = ({ isOpen, onClose, canClose = true }) => {
+        const { signIn, syncError, isSyncing } = useFirebaseSync();
+        const [formData, setFormData] = useState({ userId: 'marcelino', password: '', profile: 'admin' });
+        const [error, setError] = useState('');
+        
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setError('');
+          
+          if (!formData.userId || !formData.password) {
+            setError('Preencha todos os campos');
+            return;
+          }
+          
+          try {
+            // Pass profile only if userId is 'casal'
+            const profile = formData.userId === 'casal' ? formData.profile : null;
+            await signIn(formData.userId, formData.password, profile);
+            setFormData({ userId: 'marcelino', password: '', profile: 'admin' });
+            onClose();
+          } catch (err) {
+            setError(err.message);
+          }
+        };
+        
+        return (
+          <Modal 
+            isOpen={isOpen} 
+            onClose={canClose ? onClose : undefined} 
+            title="Acesso ao Sistema" 
+            className="max-w-sm"
+          >
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Select
+                label="Usuário"
+                value={formData.userId}
+                onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
+                disabled={isSyncing}
+              >
+                <option value="marcelino">Marcelino</option>
+                <option value="luiza">Luiza</option>
+                <option value="casal">Casal</option>
+              </Select>
+              
+              <Input
+                label="Senha"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Digite sua senha"
+                disabled={isSyncing}
+              />
+              
+              {formData.userId === 'casal' && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-700">
+                    Perfil de Acesso
+                  </label>
+                  <div className="flex flex-col space-y-2">
+                    <label className="flex items-center space-x-2 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">
+                      <input
+                        type="radio"
+                        name="profile"
+                        value="admin"
+                        checked={formData.profile === 'admin'}
+                        onChange={(e) => setFormData({ ...formData, profile: e.target.value })}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <div>
+                        <span className="block text-sm font-medium text-neutral-900">Admin (Visão Completa)</span>
+                        <span className="block text-xs text-neutral-500">Ver e gerenciar finanças de Marcelino e Luiza</span>
+                      </div>
+                    </label>
+                    <label className="flex items-center space-x-2 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">
+                      <input
+                        type="radio"
+                        name="profile"
+                        value="usuario_c"
+                        checked={formData.profile === 'usuario_c'}
+                        onChange={(e) => setFormData({ ...formData, profile: e.target.value })}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <div>
+                        <span className="block text-sm font-medium text-neutral-900">Conta Conjunta</span>
+                        <span className="block text-xs text-neutral-500">Gerenciar finanças próprias do casal</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+              
+              {(error || syncError) && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">{error || syncError}</p>
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-2">
+                {canClose && (
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    onClick={onClose} 
+                    className="flex-1"
+                    disabled={isSyncing}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+                <Button 
+                  type="submit" 
+                  variant="primary" 
+                  className={canClose ? "flex-1" : "w-full"}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? 'Entrando...' : 'Entrar'}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        );
       };
       
       // ============================================================================
@@ -1116,13 +1597,15 @@ const firebaseConfig = {
         
         useEffect(() => {
           const handleEscape = (e) => {
-            if (e.key === 'Escape' && isOpen) {
+            if (e.key === 'Escape' && isOpen && onClose) {
               onClose();
             }
           };
           
-          document.addEventListener('keydown', handleEscape);
-          return () => document.removeEventListener('keydown', handleEscape);
+          if (onClose) {
+            document.addEventListener('keydown', handleEscape);
+            return () => document.removeEventListener('keydown', handleEscape);
+          }
         }, [isOpen, onClose]);
         
         if (!isOpen) return null;
@@ -1132,7 +1615,7 @@ const firebaseConfig = {
             {/* Backdrop */}
             <div 
               className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
-              onClick={onClose}
+              onClick={onClose ? onClose : undefined}
             />
             
             {/* Modal Content */}
@@ -1148,14 +1631,16 @@ const firebaseConfig = {
                   <h2 className="text-xl font-semibold text-neutral-900">
                     {title}
                   </h2>
-                  <button
-                    onClick={onClose}
-                    className="text-neutral-400 hover:text-neutral-600 transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  {onClose && (
+                    <button
+                      onClick={onClose}
+                      className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
               
@@ -1167,13 +1652,144 @@ const firebaseConfig = {
         );
       };
       
+      // ---------- DELETE CONFIRMATION MODAL ----------
+      
+      /**
+       * Delete Confirmation Modal
+       * Handles deletion of single transaction or installment series
+       */
+      const DeleteConfirmationModal = ({ isOpen, onClose, transaction, onConfirm }) => {
+        const { transactions } = useAppStore();
+        const [deleteOption, setDeleteOption] = useState('single');
+        
+        if (!transaction) return null;
+        
+        // Check if this is part of an installment series
+        const isInstallment = transaction.installments && 
+                              transaction.installments.current && 
+                              transaction.installments.total;
+        
+        // Find all installments in the series (future only)
+        const futureInstallments = isInstallment ? transactions.filter(t => 
+          t.description.includes(transaction.description.split('(')[0].trim()) &&
+          t.installments &&
+          t.installments.total === transaction.installments.total &&
+          t.installments.current >= transaction.installments.current &&
+          t.id !== transaction.id
+        ) : [];
+        
+        const handleDelete = () => {
+          if (isInstallment && deleteOption === 'all') {
+            // Delete current and all future installments
+            onConfirm(transaction, [...futureInstallments, transaction]);
+          } else {
+            // Delete only this transaction
+            onConfirm(transaction, [transaction]);
+          }
+          onClose();
+        };
+        
+        return (
+          <Modal isOpen={isOpen} onClose={onClose} title="Confirmar Exclusão" className="max-w-md">
+            <div className="space-y-4">
+              <p className="text-sm text-neutral-600">
+                Tem certeza que deseja excluir esta transação?
+              </p>
+              
+              <div className="p-3 bg-neutral-50 rounded-lg">
+                <p className="font-medium text-neutral-900">{transaction.description}</p>
+                <p className="text-sm text-neutral-600 mt-1">
+                  Valor: {formatCurrency(transaction.amount)}
+                </p>
+                {isInstallment && (
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Parcela {transaction.installments.current} de {transaction.installments.total}
+                  </p>
+                )}
+              </div>
+              
+              {isInstallment && futureInstallments.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-700">
+                    O que deseja excluir?
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-start space-x-2 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">
+                      <input
+                        type="radio"
+                        value="single"
+                        checked={deleteOption === 'single'}
+                        onChange={(e) => setDeleteOption(e.target.value)}
+                        className="mt-0.5 w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <div className="flex-1">
+                        <span className="block text-sm font-medium text-neutral-900">Apenas esta parcela</span>
+                        <span className="block text-xs text-neutral-500">Mantém as demais parcelas</span>
+                      </div>
+                    </label>
+                    <label className="flex items-start space-x-2 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50">
+                      <input
+                        type="radio"
+                        value="all"
+                        checked={deleteOption === 'all'}
+                        onChange={(e) => setDeleteOption(e.target.value)}
+                        className="mt-0.5 w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <div className="flex-1">
+                        <span className="block text-sm font-medium text-neutral-900">Esta e todas as próximas</span>
+                        <span className="block text-xs text-neutral-500">
+                          Exclui {futureInstallments.length + 1} parcela(s)
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  onClick={onClose}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="primary"
+                  onClick={handleDelete}
+                  className="flex-1 bg-red-600 hover:bg-red-700"
+                >
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        );
+      };
+      
       // ---------- TRANSACTION FORM COMPONENT ----------
       
       /**
        * Transaction Form Component
+       * Modal form for creating new transactions or editing existing ones
+       * @param {object} transaction - Transaction to edit (null for new transaction)
        */
-      const TransactionForm = ({ isOpen, onClose }) => {
-        const { addTransaction } = useAppStore();
+      const TransactionForm = ({ isOpen, onClose, transaction = null }) => {
+        const { addTransaction, updateTransaction } = useAppStore();
+        const { currentUser, updateTransactionInDatabase } = useFirebaseSync();
+        
+        const isEditMode = !!transaction;
+        
+        // Initialize ownerId based on current user
+        const getDefaultOwnerId = () => {
+          if (!currentUser) return 'marcelino';
+          if (currentUser.type === 'admin') return 'marcelino'; // Admin can choose, defaults to marcelino
+          // For regular users (marcelino, luiza, casalusuario), use their ID
+          return currentUser.id;
+        };
+        
         const [formData, setFormData] = useState({
           description: '',
           amount: '',
@@ -1183,8 +1799,65 @@ const firebaseConfig = {
           paymentMethod: 'debit',
           isInstallment: false,
           installmentsCount: 1,
-          cardClosingDay: 5
+          cardClosingDay: 5,
+          ownerId: getDefaultOwnerId()
         });
+        
+        // Load transaction data when in edit mode or reset when creating new
+        useEffect(() => {
+          if (isOpen) {
+            if (transaction) {
+              // Edit mode: load transaction data
+              setFormData({
+                description: transaction.description || '',
+                amount: transaction.amount?.toString() || '',
+                date: transaction.date ? new Date(transaction.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                category: transaction.category || '',
+                type: transaction.type || 'expense',
+                paymentMethod: transaction.paymentMethod || 'debit',
+                isInstallment: false,
+                installmentsCount: 1,
+                cardClosingDay: 5,
+                ownerId: transaction.ownerId || getDefaultOwnerId()
+              });
+            } else {
+              // New mode: reset form with current user's ownerId
+              const defaultOwnerId = currentUser 
+                ? (currentUser.type === 'admin' ? 'marcelino' : currentUser.id)
+                : 'marcelino';
+              
+              setFormData({
+                description: '',
+                amount: '',
+                date: new Date().toISOString().split('T')[0],
+                category: '',
+                type: 'expense',
+                paymentMethod: 'debit',
+                isInstallment: false,
+                installmentsCount: 1,
+                cardClosingDay: 5,
+                ownerId: defaultOwnerId
+              });
+              
+              console.log('📝 Form reset for new transaction, ownerId:', defaultOwnerId);
+            }
+            setErrors({});
+          }
+        }, [transaction, isOpen, currentUser]);
+        
+        // Update ownerId when currentUser changes (only for new transactions)
+        useEffect(() => {
+          if (!isEditMode && currentUser) {
+            const newOwnerId = currentUser.type === 'admin' ? 'marcelino' : currentUser.id;
+            if (formData.ownerId !== newOwnerId) {
+              setFormData(prev => ({
+                ...prev,
+                ownerId: newOwnerId
+              }));
+              console.log('🔄 Updated ownerId based on currentUser:', newOwnerId);
+            }
+          }
+        }, [currentUser, isEditMode]);
         
         const [errors, setErrors] = useState({});
         
@@ -1239,7 +1912,7 @@ const firebaseConfig = {
           return Object.keys(newErrors).length === 0;
         };
         
-        const handleSubmit = (e) => {
+        const handleSubmit = async (e) => {
           e.preventDefault();
           
           if (!validateForm()) {
@@ -1247,7 +1920,47 @@ const firebaseConfig = {
           }
           
           const amount = parseFloat(formData.amount);
-          const userId = 'default-user'; // TODO: Get from auth
+          const userId = currentUser?.id || 'default-user';
+          const ownerId = formData.ownerId || currentUser?.id || 'marcelino';
+          
+          console.log('🔍 Form Submit Debug:', {
+            currentUser: currentUser?.name,
+            currentUserId: currentUser?.id,
+            currentUserType: currentUser?.type,
+            formOwnerId: formData.ownerId,
+            finalOwnerId: ownerId,
+            finalUserId: userId
+          });
+          
+          if (isEditMode) {
+            // Update existing transaction
+            console.log('✏️ Updating transaction:', transaction.id);
+            
+            const updates = {
+              description: formData.description,
+              amount,
+              type: formData.type,
+              date: new Date(formData.date).toISOString(),
+              category: formData.category,
+              paymentMethod: formData.paymentMethod
+            };
+            
+            // Update in local store
+            updateTransaction(transaction.id, updates);
+            
+            // Update in Firebase
+            try {
+              await updateTransactionInDatabase(transaction.id, updates, transaction.ownerId);
+            } catch (error) {
+              console.error('Failed to update in database:', error);
+            }
+            
+            onClose();
+            return;
+          }
+          
+          // Create new transaction
+          console.log('📝 Creating transaction:', { userId, ownerId, currentUser: currentUser?.type });
           
           if (formData.isInstallment && formData.paymentMethod === 'credit') {
             // Generate installment transactions
@@ -1268,7 +1981,8 @@ const firebaseConfig = {
                 category: formData.category,
                 paymentMethod: formData.paymentMethod,
                 installments: inst.installment,
-                userId
+                userId,
+                ownerId
               });
             });
           } else {
@@ -1281,7 +1995,8 @@ const firebaseConfig = {
               category: formData.category,
               paymentMethod: formData.paymentMethod,
               installments: null,
-              userId
+              userId,
+              ownerId
             });
           }
           
@@ -1295,14 +2010,15 @@ const firebaseConfig = {
             paymentMethod: 'debit',
             isInstallment: false,
             installmentsCount: 1,
-            cardClosingDay: 5
+            cardClosingDay: 5,
+            ownerId: getDefaultOwnerId()
           });
           setErrors({});
           onClose();
         };
         
         return (
-          <Modal isOpen={isOpen} onClose={onClose} title="Nova Transação" className="max-w-lg">
+          <Modal isOpen={isOpen} onClose={onClose} title={isEditMode ? "Editar Transação" : "Nova Transação"} className="max-w-lg">
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 label="Descrição"
@@ -1359,6 +2075,49 @@ const firebaseConfig = {
                 <option value="debit">Débito</option>
                 <option value="credit">Crédito</option>
               </Select>
+              
+              {currentUser?.type === 'admin' && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-700">
+                    Quem pagou?
+                  </label>
+                  <div className="flex flex-wrap gap-3">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="ownerId"
+                        value="marcelino"
+                        checked={formData.ownerId === 'marcelino'}
+                        onChange={(e) => handleChange('ownerId', e.target.value)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-neutral-700">Marcelino</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="ownerId"
+                        value="luiza"
+                        checked={formData.ownerId === 'luiza'}
+                        onChange={(e) => handleChange('ownerId', e.target.value)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-neutral-700">Luiza</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="ownerId"
+                        value="casalusuario"
+                        checked={formData.ownerId === 'casalusuario'}
+                        onChange={(e) => handleChange('ownerId', e.target.value)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-neutral-700">Conta Conjunta</span>
+                    </label>
+                  </div>
+                </div>
+              )}
               
               {formData.paymentMethod === 'credit' && (
                 <div className="space-y-4">
@@ -1426,7 +2185,8 @@ const firebaseConfig = {
       // ============================================================================
       
       const AuthButton = () => {
-        const { currentUser, signInWithGoogle, signOut, isSyncing } = useFirebaseSync();
+        const { currentUser, signOut, isSyncing } = useFirebaseSync();
+        const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
         
         if (isSyncing) {
           return (
@@ -1452,9 +2212,12 @@ const firebaseConfig = {
         }
         
         return (
-          <Button onClick={signInWithGoogle} className="text-sm">
-            Login com Google
-          </Button>
+          <>
+            <Button onClick={() => setIsLoginModalOpen(true)} className="text-sm">
+              Login
+            </Button>
+            <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+          </>
         );
       };
       
@@ -1466,7 +2229,9 @@ const firebaseConfig = {
         const { isSidebarOpen, setSidebarOpen } = useAppStore();
         const navItems = [
           { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+          { label: 'Calendário', to: '/calendar', icon: Calendar },
           { label: 'Transações', to: '/transactions', icon: ListOrdered },
+          { label: 'Cartões', to: '/cards', icon: CreditCard },
           { label: 'Importação', to: '/import', icon: UploadCloud },
           { label: 'Configurações', to: '/settings', icon: SettingsIcon }
         ];
@@ -1559,7 +2324,10 @@ const firebaseConfig = {
       
       const Dashboard = () => {
         const { transactions, globalFilter } = useAppStore();
+        const { currentUser, deleteTransactionFromDatabase } = useFirebaseSync();
         const [isFormOpen, setIsFormOpen] = useState(false);
+        const [editingTransaction, setEditingTransaction] = useState(null);
+        const [deletingTransaction, setDeletingTransaction] = useState(null);
         const now = useMemo(() => new Date(), []);
         const activePeriod = useMemo(() => ({
           month: globalFilter.month ?? now.getMonth() + 1,
@@ -1599,24 +2367,34 @@ const firebaseConfig = {
             .slice(0, 5);
         }, [filteredTransactions]);
         
+        const handleDeleteConfirm = async (transaction, transactionsToDelete) => {
+          for (const txn of transactionsToDelete) {
+            await deleteTransactionFromDatabase(txn.id, txn.ownerId);
+          }
+          setDeletingTransaction(null);
+        };
+        
         const summaryCards = [
           {
             title: 'Receitas',
             value: formatCurrency(summary.income),
             icon: ArrowUpCircle,
-            accent: 'text-primary-600 bg-primary-50'
+            accent: 'text-green-700 bg-green-100',
+            emoji: '↗️'
           },
           {
             title: 'Despesas',
             value: formatCurrency(summary.expense),
             icon: ArrowDownCircle,
-            accent: 'text-red-600 bg-red-50'
+            accent: 'text-red-700 bg-red-100',
+            emoji: '↘️'
           },
           {
             title: 'Saldo',
             value: formatCurrency(balance),
             icon: Wallet,
-            accent: 'text-blue-600 bg-blue-50'
+            accent: balance >= 0 ? 'text-blue-700 bg-blue-100' : 'text-orange-700 bg-orange-100',
+            emoji: balance >= 0 ? '💰' : '⚠️'
           }
         ];
         
@@ -1662,29 +2440,52 @@ const firebaseConfig = {
                       <tr className="text-left text-neutral-500">
                         <th className="py-2">Descrição</th>
                         <th className="py-2">Categoria</th>
-                        <th className="py-2">Tipo</th>
                         <th className="py-2">Data</th>
+                        {currentUser?.type === 'admin' && <th className="py-2">Quem</th>}
                         <th className="py-2 text-right">Valor</th>
+                        <th className="py-2 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
                       {lastTransactions.length === 0 && (
                         <tr>
-                          <td colSpan="5" className="py-6 text-center text-neutral-500">
+                          <td colSpan={currentUser?.type === 'admin' ? "6" : "5"} className="py-6 text-center text-neutral-500">
                             Nenhuma transação no período selecionado.
                           </td>
                         </tr>
                       )}
                       {lastTransactions.map((transaction) => (
-                        <tr key={transaction.id}>
-                          <td className="py-3 font-medium text-neutral-900">{transaction.description}</td>
+                        <tr 
+                          key={transaction.id} 
+                          className={cn(
+                            "hover:opacity-90 transition-opacity",
+                            transaction.type === 'income' ? 'bg-green-50' : 'bg-red-50'
+                          )}
+                        >
+                          <td className="py-3 font-medium text-neutral-900">
+                            <span className="flex items-center gap-2">
+                              <span className={cn(
+                                "text-lg",
+                                transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                              )}>
+                                {transaction.type === 'income' ? '↗️' : '↘️'}
+                              </span>
+                              {transaction.description}
+                            </span>
+                          </td>
                           <td className="py-3">
                             <Badge variant={transaction.type === 'income' ? 'income' : 'expense'}>
                               {transaction.category || 'Geral'}
                             </Badge>
                           </td>
-                          <td className="py-3 capitalize text-neutral-600">{transaction.type}</td>
                           <td className="py-3 text-neutral-600">{formatDateLabel(transaction.date)}</td>
+                          {currentUser?.type === 'admin' && (
+                            <td className="py-3">
+                              <Badge variant="info">
+                                {getOwnerName(transaction.ownerId)}
+                              </Badge>
+                            </td>
+                          )}
                           <td
                             className={cn(
                               'py-3 text-right font-semibold',
@@ -1694,6 +2495,26 @@ const firebaseConfig = {
                             {transaction.type === 'income' ? '+' : '-'}
                             {formatCurrency(transaction.amount)}
                           </td>
+                          <td className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingTransaction(transaction)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                ✏️
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeletingTransaction(transaction)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                🗑️
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1702,7 +2523,21 @@ const firebaseConfig = {
               </CardContent>
             </Card>
             
-            <TransactionForm isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} />
+            <TransactionForm 
+              isOpen={isFormOpen || !!editingTransaction} 
+              onClose={() => {
+                setIsFormOpen(false);
+                setEditingTransaction(null);
+              }} 
+              transaction={editingTransaction}
+            />
+            
+            <DeleteConfirmationModal
+              isOpen={!!deletingTransaction}
+              onClose={() => setDeletingTransaction(null)}
+              transaction={deletingTransaction}
+              onConfirm={handleDeleteConfirm}
+            />
           </div>
         );
       };
@@ -1713,6 +2548,9 @@ const firebaseConfig = {
       
       const TransactionsPage = () => {
         const { transactions, globalFilter, setGlobalFilter } = useAppStore();
+        const { currentUser, deleteTransactionFromDatabase } = useFirebaseSync();
+        const [editingTransaction, setEditingTransaction] = useState(null);
+        const [deletingTransaction, setDeletingTransaction] = useState(null);
         
         const monthOptions = [
           'Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
@@ -1740,6 +2578,13 @@ const firebaseConfig = {
             return monthMatch && yearMatch;
           });
         }, [transactions, globalFilter]);
+        
+        const handleDeleteConfirm = async (transaction, transactionsToDelete) => {
+          for (const txn of transactionsToDelete) {
+            await deleteTransactionFromDatabase(txn.id, txn.ownerId);
+          }
+          setDeletingTransaction(null);
+        };
         
         const handleMonthChange = (event) => {
           const value = event.target.value;
@@ -1787,27 +2632,52 @@ const firebaseConfig = {
                         <th className="py-2">Descrição</th>
                         <th className="py-2">Categoria</th>
                         <th className="py-2">Pagamento</th>
+                        {currentUser?.type === 'admin' && <th className="py-2">Quem</th>}
                         <th className="py-2 text-right">Valor</th>
+                        <th className="py-2 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
                       {filtered.length === 0 && (
                         <tr>
-                          <td colSpan="5" className="py-6 text-center text-neutral-500">
+                          <td colSpan={currentUser?.type === 'admin' ? "7" : "6"} className="py-6 text-center text-neutral-500">
                             Nenhuma transação encontrada para o filtro atual.
                           </td>
                         </tr>
                       )}
                       {filtered.map((transaction) => (
-                        <tr key={transaction.id}>
+                        <tr 
+                          key={transaction.id} 
+                          className={cn(
+                            "hover:opacity-90 transition-opacity",
+                            transaction.type === 'income' ? 'bg-green-50' : 'bg-red-50'
+                          )}
+                        >
                           <td className="py-3 text-neutral-600">{formatDateLabel(transaction.date)}</td>
-                          <td className="py-3 font-medium text-neutral-900">{transaction.description}</td>
+                          <td className="py-3 font-medium text-neutral-900">
+                            <span className="flex items-center gap-2">
+                              <span className={cn(
+                                "text-lg",
+                                transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                              )}>
+                                {transaction.type === 'income' ? '↗️' : '↘️'}
+                              </span>
+                              {transaction.description}
+                            </span>
+                          </td>
                           <td className="py-3">
                             <Badge variant={transaction.type === 'income' ? 'income' : 'expense'}>
                               {transaction.category || 'Geral'}
                             </Badge>
                           </td>
                           <td className="py-3 text-neutral-600 capitalize">{transaction.paymentMethod || '—'}</td>
+                          {currentUser?.type === 'admin' && (
+                            <td className="py-3">
+                              <Badge variant="info">
+                                {getOwnerName(transaction.ownerId)}
+                              </Badge>
+                            </td>
+                          )}
                           <td
                             className={cn(
                               'py-3 text-right font-semibold',
@@ -1817,6 +2687,26 @@ const firebaseConfig = {
                             {transaction.type === 'income' ? '+' : '-'}
                             {formatCurrency(transaction.amount)}
                           </td>
+                          <td className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingTransaction(transaction)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                ✏️ Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeletingTransaction(transaction)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                🗑️ Excluir
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1824,6 +2714,233 @@ const firebaseConfig = {
                 </div>
               </CardContent>
             </Card>
+            
+            <TransactionForm 
+              isOpen={!!editingTransaction} 
+              onClose={() => setEditingTransaction(null)} 
+              transaction={editingTransaction}
+            />
+            
+            <DeleteConfirmationModal
+              isOpen={!!deletingTransaction}
+              onClose={() => setDeletingTransaction(null)}
+              transaction={deletingTransaction}
+              onConfirm={handleDeleteConfirm}
+            />
+          </div>
+        );
+      };
+      
+      // ============================================================================
+      // CALENDAR PAGE
+      // ============================================================================
+      
+      const CalendarPage = () => {
+        const { transactions, globalFilter, setGlobalFilter } = useAppStore();
+        const { currentUser } = useFirebaseSync();
+        const now = new Date();
+        const [currentMonth, setCurrentMonth] = useState(globalFilter.month || now.getMonth() + 1);
+        const [currentYear, setCurrentYear] = useState(globalFilter.year || now.getFullYear());
+        
+        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+        const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1).getDay();
+        
+        const monthTransactions = useMemo(() => {
+          return transactions.filter((t) => {
+            const date = parseToDate(t.date);
+            return date && date.getMonth() + 1 === currentMonth && date.getFullYear() === currentYear;
+          });
+        }, [transactions, currentMonth, currentYear]);
+        
+        const getTransactionsForDay = (day) => {
+          return monthTransactions.filter((t) => {
+            const date = parseToDate(t.date);
+            return date && date.getDate() === day;
+          });
+        };
+        
+        const getSummaryForDay = (day) => {
+          const dayTxns = getTransactionsForDay(day);
+          return dayTxns.reduce((acc, t) => {
+            if (t.type === 'income') acc.income += t.amount;
+            if (t.type === 'expense') acc.expense += t.amount;
+            return acc;
+          }, { income: 0, expense: 0 });
+        };
+        
+        const prevMonth = () => {
+          if (currentMonth === 1) {
+            setCurrentMonth(12);
+            setCurrentYear(currentYear - 1);
+          } else {
+            setCurrentMonth(currentMonth - 1);
+          }
+        };
+        
+        const nextMonth = () => {
+          if (currentMonth === 12) {
+            setCurrentMonth(1);
+            setCurrentYear(currentYear + 1);
+          } else {
+            setCurrentMonth(currentMonth + 1);
+          }
+        };
+        
+        const monthName = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][currentMonth - 1];
+        const weekDays = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+        
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>{monthName} {currentYear}</CardTitle>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={prevMonth}>←</Button>
+                    <Button variant="secondary" size="sm" onClick={nextMonth}>→</Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-7 gap-2">
+                  {weekDays.map(day => (
+                    <div key={day} className="text-center text-xs font-medium text-neutral-500 py-2">{day}</div>
+                  ))}
+                  {[...Array(firstDayOfMonth)].map((_, i) => <div key={`empty-${i}`} />)}
+                  {[...Array(daysInMonth)].map((_, i) => {
+                    const day = i + 1;
+                    const summary = getSummaryForDay(day);
+                    const dayTxns = getTransactionsForDay(day);
+                    const hasTransactions = dayTxns.length > 0;
+                    const isToday = day === now.getDate() && currentMonth === now.getMonth() + 1 && currentYear === now.getFullYear();
+                    
+                    return (
+                      <div
+                        key={day}
+                        className={cn(
+                          "border rounded-lg p-2 min-h-24 hover:bg-neutral-50",
+                          isToday && "border-primary-500 bg-primary-50/30",
+                          !hasTransactions && "bg-neutral-50"
+                        )}
+                      >
+                        <div className="text-sm font-medium text-neutral-900 mb-1">{day}</div>
+                        {hasTransactions && (
+                          <div className="space-y-1 text-xs">
+                            {summary.income > 0 && (
+                              <div className="text-primary-600 font-medium">+{formatCurrency(summary.income)}</div>
+                            )}
+                            {summary.expense > 0 && (
+                              <div className="text-red-600 font-medium">-{formatCurrency(summary.expense)}</div>
+                            )}
+                            <div className="text-neutral-500">{dayTxns.length} transação(ões)</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      };
+      
+      // ============================================================================
+      // CARDS PAGE (CREDIT CARDS)
+      // ============================================================================
+      
+      const CardsPage = () => {
+        const { transactions } = useAppStore();
+        const { currentUser } = useFirebaseSync();
+        
+        const creditCardTransactions = useMemo(() => {
+          return transactions.filter(t => t.paymentMethod === 'credit');
+        }, [transactions]);
+        
+        const groupedByMonth = useMemo(() => {
+          const groups = {};
+          creditCardTransactions.forEach(t => {
+            const date = parseToDate(t.date);
+            if (!date) return;
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(t);
+          });
+          return Object.entries(groups).sort().reverse();
+        }, [creditCardTransactions]);
+        
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-neutral-900">Cartões de Crédito</h2>
+                <p className="text-sm text-neutral-600">Controle de despesas no crédito</p>
+              </div>
+            </div>
+            
+            {groupedByMonth.map(([monthKey, txns]) => {
+              const [year, month] = monthKey.split('-');
+              const monthName = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(month) - 1];
+              const total = txns.reduce((sum, t) => sum + t.amount, 0);
+              
+              return (
+                <Card key={monthKey}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>{monthName} {year}</CardTitle>
+                      <Badge variant="expense" className="text-lg px-3 py-1">
+                        {formatCurrency(total)}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {txns.map(t => (
+                        <div 
+                          key={t.id} 
+                          className={cn(
+                            "flex items-center justify-between p-3 rounded-lg",
+                            t.type === 'income' ? 'bg-green-50' : 'bg-red-50'
+                          )}
+                        >
+                          <div>
+                            <p className="font-medium text-neutral-900 flex items-center gap-2">
+                              <span className={cn(
+                                "text-lg",
+                                t.type === 'income' ? 'text-green-600' : 'text-red-600'
+                              )}>
+                                {t.type === 'income' ? '↗️' : '↘️'}
+                              </span>
+                              {t.description}
+                            </p>
+                            <p className="text-xs text-neutral-500 ml-7">{formatDateLabel(t.date)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className={cn(
+                              "font-semibold",
+                              t.type === 'income' ? 'text-green-600' : 'text-red-600'
+                            )}>
+                              {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
+                            </p>
+                            {currentUser?.type === 'admin' && (
+                              <Badge variant="info" className="text-xs mt-1">{getOwnerName(t.ownerId)}</Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+            
+            {groupedByMonth.length === 0 && (
+              <Card>
+                <CardContent className="py-12 text-center text-neutral-500">
+                  Nenhuma transação no cartão de crédito encontrada.
+                </CardContent>
+              </Card>
+            )}
           </div>
         );
       };
@@ -2113,18 +3230,40 @@ const firebaseConfig = {
       // ============================================================================
       
       function App() {
+        const { currentUser } = useFirebaseSync();
+        
+        // Clear any old data storage on first render
+        useEffect(() => {
+          const oldStorageKey = 'financial-app-storage';
+          if (localStorage.getItem(oldStorageKey)) {
+            console.log('🧹 Migrating from old storage format...');
+            localStorage.removeItem(oldStorageKey);
+          }
+        }, []);
+        
         return (
-          <HashRouter>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/transactions" element={<TransactionsPage />} />
-                <Route path="/import" element={<ImportPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="*" element={<Dashboard />} />
-              </Routes>
-            </Layout>
-          </HashRouter>
+          <>
+            <HashRouter>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/transactions" element={<TransactionsPage />} />
+                  <Route path="/cards" element={<CardsPage />} />
+                  <Route path="/import" element={<ImportPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="*" element={<Dashboard />} />
+                </Routes>
+              </Layout>
+            </HashRouter>
+            
+            {/* Login Modal - sempre visível quando não houver usuário logado */}
+            <LoginModal 
+              isOpen={!currentUser} 
+              onClose={() => {}} 
+              canClose={false}
+            />
+          </>
         );
       }
       
