@@ -5,13 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Empire OS - Stable Restore v16.2</title>
     
-    <!-- Tailwind CSS - Production -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
     <script>
-        // Custom theme variables will be applied via CSS custom properties
-        document.documentElement.style.setProperty('--color-primary', '#4f46e5');
-        document.documentElement.style.setProperty('--color-secondary', '#64748b');
+        (function(){
+            const originalWarn = console.warn;
+            console.warn = function(message, ...rest) {
+                if (typeof message === 'string' && message.includes('cdn.tailwindcss.com should not be used in production')) {
+                    return;
+                }
+                originalWarn.call(console, message, ...rest);
+            };
+        })();
     </script>
+    <!-- Tailwind CSS (CDN Build for SPA) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <!-- Phosphor Icons -->
@@ -21,117 +27,372 @@
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-            transition: background-color 0.3s ease, color 0.3s ease; 
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
+        :root {
+            --color-bg: #f4f6fb;
+            --color-surface: #ffffff;
+            --color-surface-alt: #f8fafc;
+            --color-sidebar: #0f172a;
+            --color-border: #e2e8f0;
+            --color-text: #111827;
+            --color-text-light: #6b7280;
+            --color-primary: #4f46e5;
+            --color-primary-dark: #4338ca;
+            --color-amber: #f59e0b;
+            --color-emerald: #10b981;
+            --color-danger: #ef4444;
+            --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.08);
+            --shadow-hover: 0 20px 45px rgba(15, 23, 42, 0.12);
+            --radius-lg: 20px;
         }
-        .page-transition { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        
+        html.dark {
+            --color-bg: #050914;
+            --color-surface: #111827;
+            --color-surface-alt: #1f2937;
+            --color-sidebar: #030712;
+            --color-border: #1f2937;
+            --color-text: #f1f5f9;
+            --color-text-light: #94a3b8;
+            --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.4);
+            --shadow-hover: 0 25px 50px rgba(15, 23, 42, 0.6);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            display: flex;
+            min-height: 100vh;
+            overflow: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        a { color: inherit; }
+        img { max-width: 100%; display: block; }
+        button { font-family: inherit; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        .dark ::-webkit-scrollbar-thumb { background: #334155; }
-        
-        input:focus, select:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2); }
-        .nav-item.active { background-color: #e0e7ff; color: #4338ca; border-right: 3px solid #4338ca; }
-        .dark .nav-item.active { background-color: #1e1b4b; color: #818cf8; border-right: 3px solid #818cf8; }
-        
-        .modal-backdrop { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(4px); }
-        .card { background: white; border-radius: 1rem; border: 1px solid #e2e8f0; transition: all 0.2s; }
-        .dark .card { background: #1e293b; border-color: #334155; }
-        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
-        
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+        html.dark ::-webkit-scrollbar-thumb { background: #1f2937; }
+
+        /* Layout */
+        body.app-shell { display: flex; }
+        .sidebar {
+            width: 270px;
+            background: var(--color-sidebar);
+            color: #e2e8f0;
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            padding: 2rem 1.5rem;
+            gap: 2rem;
+        }
+        @media (max-width: 1024px) {
+            .sidebar { display: none; }
+        }
+        .sidebar .brand { display: flex; gap: 0.75rem; align-items: center; }
+        .sidebar .brand-badge {
+            width: 48px; height: 48px; border-radius: 16px;
+            background: linear-gradient(135deg, #6366f1, #ec4899);
+            display: grid; place-items: center; font-size: 1.4rem;
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.5);
+        }
+        .sidebar h1 { margin: 0; font-size: 1.25rem; }
+        .sidebar p { margin: 0; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.2em; color: #94a3b8; }
+
+        .nav-menu { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; }
+        .nav-item {
+            border: 1px solid transparent;
+            border-radius: 14px;
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            color: #94a3b8;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .nav-item:hover { background: rgba(148, 163, 184, 0.12); color: #f8fafc; }
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(147,51,234,0.2));
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.3);
+        }
+
+        .sidebar .profile {
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding-top: 1.5rem;
+        }
+        .profile-card { display: flex; gap: 0.75rem; align-items: center; }
+        .profile-card .avatar {
+            width: 44px; height: 44px; border-radius: 14px;
+            background: linear-gradient(135deg, #3b82f6, #a855f7);
+            display: grid;
+            place-items: center;
+            font-weight: 700;
+        }
+        .xp-track { margin-top: 0.75rem; }
+        .xp-track-bar {
+            width: 100%; height: 6px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.15);
+            overflow: hidden;
+        }
+        .xp-track-bar span {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #f472b6, #a855f7, #6366f1);
+            transition: width 0.4s ease;
+        }
+        .xp-track footer { margin-top: 0.35rem; display: flex; justify-content: space-between; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+
+        .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--color-bg); }
+        .top-bar {
+            height: 70px;
+            padding: 0 2rem;
+            border-bottom: 1px solid var(--color-border);
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(14px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky; top: 0; z-index: 10;
+        }
+        html.dark .top-bar { background: rgba(17, 24, 39, 0.85); }
+        .top-actions { display: flex; gap: 0.5rem; }
+        .icon-btn {
+            width: 40px; height: 40px;
+            border-radius: 12px;
+            border: 1px solid var(--color-border);
+            background: var(--color-surface);
+            color: var(--color-text-light);
+            display: grid; place-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .icon-btn:hover { color: var(--color-primary); border-color: rgba(79, 70, 229, 0.4); box-shadow: 0 6px 18px rgba(79, 70, 229, 0.15); }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2.5rem clamp(1.5rem, 4vw, 3.5rem);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), var(--color-bg));
+        }
+        .page-transition { animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card {
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-soft);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
+        html.dark .card { background: var(--color-surface); }
+
+        .hero-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+        @media (min-width: 1024px) {
+            .hero-grid { grid-template-columns: 2fr 1fr; }
+        }
+        .hero-card { display: flex; flex-direction: column; gap: 1rem; }
+        .hero-card h2 { margin: 0; font-size: 2rem; }
+        .hero-card canvas { height: 150px !important; }
+
+        .projection-card {
+            color: #fff;
+            background: linear-gradient(135deg, #312e81, #6d28d9);
+            border: none;
+            position: relative;
+            overflow: hidden;
+        }
+        .projection-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at top right, rgba(255,255,255,0.25), transparent 55%);
+            opacity: 0.7;
+        }
+        .projection-card > * { position: relative; z-index: 1; }
+
+        .dashboard-kpis {
+            margin-top: 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+        }
+        .kpi-card { padding: 1.25rem; border-left: 5px solid var(--color-primary); }
+        .kpi-card p { margin: 0; }
+        .kpi-card span { font-size: 1.3rem; font-weight: 800; }
+
+        .xp-card { display: flex; gap: 1.5rem; align-items: center; margin-top: 1rem; }
+        .xp-bar { flex: 1; height: 10px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+        .xp-bar span { display: block; height: 100%; background: linear-gradient(90deg, #f472b6, #a855f7, #6366f1); border-radius: inherit; }
+
+        .dashboard-bottom { margin-top: 2rem; display: grid; gap: 1.5rem; }
+        @media (min-width: 1100px) { .dashboard-bottom { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        .radar-card, .quick-card, .trophy-card { min-height: 360px; display: flex; flex-direction: column; }
+        .radar-card .card-header,
+        .quick-card .card-header,
+        .trophy-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .quick-actions-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
+        .quick-actions-grid button {
+            border: none;
+            border-radius: 16px;
+            padding: 1rem;
+            font-weight: 700;
+            background: rgba(79, 70, 229, 0.08);
+            color: var(--color-primary);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .quick-actions-grid button:nth-child(2) { background: rgba(245, 158, 11, 0.15); color: #c2410c; }
+        .quick-actions-grid button:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(15,23,42,0.1); }
+
+        .finance-grid { display: grid; gap: 1.5rem; margin-top: 2rem; }
+        @media (min-width: 1100px) { .finance-grid { grid-template-columns: 1fr 2fr; } }
+        .finance-grid .cards-stack { display: flex; flex-direction: column; gap: 1.25rem; }
+        .pots-card { background: linear-gradient(135deg, rgba(79,70,229,0.08), rgba(16,185,129,0.08)); }
+
+        .tabs-layout { margin: 1.5rem 0; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .tab-btn {
+            border: 1px solid var(--color-border);
+            border-radius: 999px;
+            padding: 0.35rem 1.25rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--color-text-light);
+            background: var(--color-surface);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .tab-btn.active { background: var(--color-primary); color: #fff; border-color: transparent; box-shadow: 0 10px 20px rgba(79,70,229,0.4); }
+
+        /* Buttons & Inputs */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-radius: 12px;
+            border: none;
+            font-weight: 600;
+            padding: 0.9rem 1.4rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .btn-primary { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; box-shadow: 0 12px 30px rgba(79,70,229,0.35); }
+        .btn-primary:hover { transform: translateY(-2px); }
+        .btn-secondary { background: rgba(79,70,229,0.08); color: var(--color-primary); border: 1px solid rgba(79,70,229,0.2); }
+        .btn-text { background: transparent; color: var(--color-text-light); padding: 0.5rem 0.75rem; border-radius: 10px; }
+        .btn-text:hover { color: var(--color-primary); background: rgba(79, 70, 229, 0.1); }
+        input, select, textarea {
+            border-radius: 12px;
+            border: 1px solid var(--color-border);
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            background: var(--color-surface-alt);
+            color: var(--color-text);
+            width: 100%;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+
+        /* Modals */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.75);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .modal-panel {
+            width: 100%;
+            max-width: 420px;
+            background: var(--color-surface);
+            border-radius: 24px;
+            border: 1px solid var(--color-border);
+            box-shadow: var(--shadow-hover);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .modal-panel h3 { margin: 0; font-size: 1.2rem; }
+
+        /* Utility */
+        .hidden { display: none !important; }
         .trophy-float { animation: float 3s ease-in-out infinite; }
-        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0px); } }
-
-        .group:hover .group-hover\:visible { visibility: visible; opacity: 1; transform: translateY(0); }
-
-        /* Smooth transitions */
-        button, input, select { transition: all 0.2s ease; }
-        button:active { transform: scale(0.98); }
-        
-        /* Pulse animation for new items */
-        @keyframes pulse-once { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-        .animate-pulse-once { animation: pulse-once 0.3s ease-out; }
-        
-        /* Slide in from bottom */
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-slide-up { animation: slideUp 0.4s ease-out; }
-        
-        /* Success ripple */
-        @keyframes ripple { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 100% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); } }
-        .animate-ripple { animation: ripple 0.6s ease-out; }
-        
-        /* Loading spinner */
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .animate-spin { animation: spin 1s linear infinite; }
-        
-        /* Focus styles */
-        button:focus-visible, input:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
-        
-        /* Hover effects */
-        .hover-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1); }
-        
-        /* Delete animation */
-        @keyframes fadeOut { to { opacity: 0; transform: translateX(-100%); } }
-        .animate-delete { animation: fadeOut 0.3s ease-out forwards; }
-        
-        /* No scrollbar style for tabs */
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
     </style>
 </head>
-<body class="bg-light text-slate-800 dark:bg-dark dark:text-slate-100 h-screen flex overflow-hidden">
+<body class="app-shell">
 
     <!-- MODALS -->
-    <div id="input-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 m-4 animate-bounce-in">
-            <h3 class="text-lg font-bold mb-4 text-slate-800 dark:text-white" id="modal-title">Novo Item</h3>
-            <input type="text" id="modal-input" class="w-full border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none mb-4 text-slate-800 dark:text-white" placeholder="Digite aqui...">
-            <div class="flex gap-2 justify-end">
-                <button onclick="closeInputModal()" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-bold">Cancelar</button>
-                <button id="modal-confirm-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md">Confirmar</button>
+    <div id="input-modal" class="modal-backdrop hidden">
+        <div class="modal-panel">
+            <h3 id="modal-title">Novo Item</h3>
+            <input type="text" id="modal-input" placeholder="Digite aqui...">
+            <div class="modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;">
+                <button onclick="closeInputModal()" class="btn btn-text">Cancelar</button>
+                <button id="modal-confirm-btn" class="btn btn-primary">Confirmar</button>
             </div>
         </div>
     </div>
 
-    <div id="calc-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full m-4 p-6 flex flex-col max-h-[80vh]">
-            <div class="flex justify-between items-center mb-4 shrink-0">
-                <h3 class="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white"><i class="ph-bold ph-calculator text-indigo-500"></i> Detalhes de Sobrevivência</h3>
-                <button onclick="toggleCalc(false)" class="text-slate-400 hover:text-red-500"><i class="ph-bold ph-x"></i></button>
+    <div id="calc-modal" class="modal-backdrop hidden">
+        <div class="modal-panel" style="max-width:520px; max-height:80vh;">
+            <div class="card-header" style="border-bottom:1px solid var(--color-border); padding-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem; display:flex; gap:0.5rem; align-items:center;"><i class="ph-bold ph-calculator" style="color:var(--color-primary);"></i>Detalhes de Sobrevivência</h3>
+                <button onclick="toggleCalc(false)" class="icon-btn" style="width:36px;height:36px;"><i class="ph-bold ph-x"></i></button>
             </div>
-            <div id="calc-items-list" class="space-y-3 flex-grow overflow-y-auto pr-2 mb-4"></div>
-            <button onclick="addSurvivalItem()" class="w-full mb-4 py-2 border-2 border-dashed border-slate-200 dark:border-slate-600 text-slate-400 text-xs font-bold rounded-lg hover:border-indigo-400 hover:text-indigo-500 transition">+ Adicionar Gasto</button>
-            <div class="shrink-0 border-t border-slate-100 dark:border-slate-700 pt-4">
-                <div class="flex justify-between items-center mb-4">
-                    <span class="text-sm font-bold text-slate-500">Total Mensal:</span>
-                    <span id="calc-total" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">R$ 0</span>
-                </div>
-                <button onclick="applyCalc()" class="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">Salvar</button>
+            <div id="calc-items-list" style="flex:1; overflow-y:auto; margin:1rem 0; display:flex; flex-direction:column; gap:0.75rem;"></div>
+            <button onclick="addSurvivalItem()" class="btn btn-secondary" style="width:100%;">+ Adicionar Gasto</button>
+            <div style="border-top:1px solid var(--color-border); padding-top:1rem; margin-top:1rem; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:var(--color-text-light);">Total Mensal:</span>
+                <span id="calc-total" style="font-size:1.4rem; font-weight:800; color:var(--color-primary);">R$ 0</span>
             </div>
+            <button onclick="applyCalc()" class="btn btn-primary" style="width:100%;">Salvar e Fechar</button>
         </div>
     </div>
 
     <!-- SIDEBAR -->
-    <aside class="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col z-20 shadow-xl transition-all duration-300 hidden md:flex">
-        <div class="p-6 flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
-                <i class="ph-fill ph-planet text-2xl"></i>
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-badge">
+                <i class="ph-fill ph-planet"></i>
             </div>
             <div>
-                <h1 class="font-bold text-lg tracking-tight text-slate-800 dark:text-white">Empire OS</h1>
-                <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Stable v16.2</p>
+                <h1>Empire OS</h1>
+                <p>Stable v16.2</p>
             </div>
         </div>
 
-        <nav class="flex-1 px-4 space-y-1 mt-4">
+        <nav class="nav-menu">
             <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
                 <i class="ph-duotone ph-squares-four text-xl"></i> Visão Geral
             </button>
@@ -146,88 +407,51 @@
             </button>
         </nav>
 
-        <div class="p-4 border-t border-slate-200 dark:border-slate-800">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold shadow-md">M&L</div>
-                <div class="text-xs">
-                    <p class="font-bold text-slate-700 dark:text-slate-200">Marcelino & Luiza</p>
-                    <p class="text-slate-400" id="user-rank">Nível 1</p>
+        <div class="profile">
+            <div class="profile-card">
+                <div class="avatar">M&L</div>
+                <div>
+                    <strong>Marcelino & Luiza</strong>
+                    <p id="user-rank">Nível 1</p>
                 </div>
             </div>
-            <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-2">
-                <div id="xp-bar-side" class="h-full bg-indigo-500 transition-all duration-500" style="width: 0%"></div>
-            </div>
-            <div class="flex justify-between text-[10px] text-slate-400 font-bold uppercase">
-                <span>XP</span>
-                <span id="xp-val-side">0/1000</span>
+            <div class="xp-track">
+                <div class="xp-track-bar"><span id="xp-bar-side" style="width:0%"></span></div>
+                <footer><span>XP</span><span id="xp-val-side">0/1000</span></footer>
             </div>
         </div>
     </aside>
 
     <!-- MAIN CONTENT -->
-    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+    <main class="main-area">
         
         <!-- Top Bar -->
-        <div class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur flex justify-between items-center px-4 md:px-8 z-10 sticky top-0">
-            <div class="flex items-center gap-2 md:gap-4">
-                <button onclick="toggleMobileMenu()" class="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
-                    <i class="ph-bold ph-list text-xl"></i>
-                </button>
-                <h2 id="page-title" class="text-lg md:text-xl font-bold text-slate-800 dark:text-white">Visão Geral</h2>
-                <span id="last-saved" class="hidden md:flex text-xs text-emerald-500 font-bold items-center gap-1 opacity-0 transition-opacity bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full"><i class="ph-bold ph-check"></i> Salvo</span>
+        <div class="top-bar">
+            <div class="flex items-center gap-4">
+                <h2 id="page-title" class="text-xl font-bold text-slate-800 dark:text-white">Visão Geral</h2>
+                <span id="last-saved" class="text-xs text-emerald-500 font-bold flex items-center gap-1 opacity-0 transition-opacity bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full"><i class="ph-bold ph-check"></i> Salvo</span>
             </div>
-            <div class="flex items-center gap-2 md:gap-3 no-print">
-                <button onclick="downloadData()" class="p-2 text-slate-400 hover:text-primary transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Backup"><i class="ph-bold ph-download-simple"></i></button>
-                <label class="p-2 text-slate-400 hover:text-primary transition cursor-pointer rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Restaurar"><i class="ph-bold ph-upload-simple"></i><input type="file" class="hidden" accept=".json" onchange="uploadData(this)"></label>
-                <button onclick="resetAllData()" class="p-2 text-slate-400 hover:text-red-500 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 hidden md:block" title="Resetar"><i class="ph-bold ph-trash"></i></button>
-                <button onclick="toggleTheme()" class="p-2 text-slate-400 hover:text-amber-500 transition rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Alternar tema"><i class="ph-bold ph-moon"></i></button>
-            </div>
-        </div>
-        
-        <!-- Mobile Menu Overlay -->
-        <div id="mobile-menu" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm hidden md:hidden" onclick="toggleMobileMenu()">
-            <div class="w-64 h-full bg-white dark:bg-slate-900 shadow-2xl" onclick="event.stopPropagation()">
-                <div class="p-6 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
-                            <i class="ph-fill ph-planet text-2xl"></i>
-                        </div>
-                        <div>
-                            <h1 class="font-bold text-lg text-slate-800 dark:text-white">Empire OS</h1>
-                            <p class="text-[10px] uppercase font-bold text-slate-400">v16.2</p>
-                        </div>
-                    </div>
-                    <button onclick="toggleMobileMenu()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                        <i class="ph-bold ph-x text-xl"></i>
-                    </button>
-                </div>
-                <nav class="p-4 space-y-1">
-                    <button onclick="switchTab('dashboard'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
-                        <i class="ph-duotone ph-squares-four text-xl"></i> Visão Geral
-                    </button>
-                    <button onclick="switchTab('finance'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
-                        <i class="ph-duotone ph-chart-pie-slice text-xl"></i> Financeiro
-                    </button>
-                    <button onclick="switchTab('projects'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
-                        <i class="ph-duotone ph-target text-xl"></i> Metas & Sonhos
-                    </button>
-                    <button onclick="switchTab('roadmap'); toggleMobileMenu()" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
-                        <i class="ph-duotone ph-map-trifold text-xl"></i> Jornada
-                    </button>
-                </nav>
+            <div class="top-actions no-print">
+                <button onclick="downloadData()" class="icon-btn" title="Backup"><i class="ph-bold ph-download-simple"></i></button>
+                <label class="icon-btn" title="Restaurar" style="cursor:pointer;">
+                    <i class="ph-bold ph-upload-simple"></i>
+                    <input type="file" class="hidden" accept=".json" onchange="uploadData(this)">
+                </label>
+                <button onclick="resetAllData()" class="icon-btn" title="Resetar"><i class="ph-bold ph-trash"></i></button>
+                <button onclick="toggleTheme()" class="icon-btn" title="Tema"><i class="ph-bold ph-moon"></i></button>
             </div>
         </div>
 
         <!-- CONTENT AREA -->
-        <div class="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth bg-slate-50/50 dark:bg-slate-900" id="content-area">
+        <div class="content-area" id="content-area">
             
             <!-- 1. DASHBOARD -->
             <div id="view-dashboard" class="page-transition space-y-8 max-w-7xl mx-auto">
                 
                 <!-- Hero HUD -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                <div class="hero-grid">
                     <!-- Main Stat -->
-                    <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col justify-between relative overflow-hidden">
+                    <div class="card hero-card hero-card--main">
                          <div class="flex justify-between items-start z-10">
                              <div>
                                  <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Fluxo de Caixa Mensal</p>
@@ -241,7 +465,7 @@
                     </div>
 
                     <!-- Projection -->
-                    <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-4 md:p-6 shadow-xl text-white relative overflow-hidden flex flex-col justify-between">
+                    <div class="card projection-card">
                         <div class="absolute right-0 top-0 h-full w-1/2 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                         <div class="z-10">
                             <p class="text-indigo-100 text-xs font-bold uppercase tracking-widest mb-1">Patrimônio em 12 Meses</p>
@@ -253,21 +477,21 @@
                 </div>
 
                 <!-- KPI STRIP -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="card p-4 border-l-4 border-emerald-500 flex flex-col justify-center dark:bg-slate-800">
+                <div class="dashboard-kpis">
+                    <div class="card kpi-card" style="border-left-color: var(--color-emerald);">
                         <p class="text-[10px] font-bold text-slate-400 uppercase">Patrimônio Líquido</p>
                         <p id="kpi-networth" class="text-xl font-black text-slate-800 dark:text-white">R$ 0</p>
                     </div>
-                    <div class="card p-4 border-l-4 border-amber-500 flex flex-col justify-center dark:bg-slate-800">
+                    <div class="card kpi-card" style="border-left-color: var(--color-amber);">
                         <p class="text-[10px] font-bold text-slate-400 uppercase">Sobra Mensal</p>
                         <p id="kpi-pot" class="text-xl font-black text-slate-800 dark:text-white">R$ 0</p>
                     </div>
-                    <div class="card p-4 border-l-4 border-red-500 flex flex-col justify-center dark:bg-slate-800">
+                    <div class="card kpi-card" style="border-left-color: var(--color-danger);">
                         <p class="text-[10px] font-bold text-slate-400 uppercase">Dias p/ Liberdade</p>
                         <p id="kpi-freedom" class="text-xl font-black text-slate-800 dark:text-white">--</p>
                     </div>
                     <!-- Score -->
-                    <div class="card p-4 border-l-4 border-indigo-500 flex flex-col justify-center dark:bg-slate-800 relative group">
+                    <div class="card kpi-card group" style="border-left-color: var(--color-primary); position:relative;">
                         <div class="flex justify-between items-center">
                              <p class="text-[10px] font-bold text-slate-400 uppercase">Empire Score</p>
                              <i class="ph-fill ph-info text-slate-300 text-xs cursor-help"></i>
@@ -283,10 +507,25 @@
                     </div>
                 </div>
 
+                <!-- XP Tracker -->
+                <div class="card xp-card">
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progressão</p>
+                        <p class="text-lg font-black text-slate-800 dark:text-white">Nível <span id="xp-level-display">1</span></p>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-1">
+                            <span>XP Atual</span>
+                            <span id="xp-val" class="text-slate-600 dark:text-slate-300">0/1000</span>
+                        </div>
+                        <div class="xp-bar"><span id="xp-bar" style="width:0%"></span></div>
+                    </div>
+                </div>
+
                 <!-- Bottom Section -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="dashboard-bottom">
                     <!-- 1. Radar & Feed -->
-                    <div class="card p-0 overflow-hidden dark:bg-slate-800 flex flex-col h-[400px]">
+                    <div class="card radar-card">
                         <div class="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
                             <h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2"><i class="ph-bold ph-radar text-blue-500"></i> Radar & Feed</h3>
                         </div>
@@ -297,9 +536,9 @@
                     </div>
 
                     <!-- 2. Actions & Vault -->
-                    <div class="card p-6 dark:bg-slate-800 flex flex-col h-[400px]">
+                    <div class="card quick-card">
                         <h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2"><i class="ph-bold ph-lightning text-amber-500"></i> Ações Rápidas</h3>
-                        <div class="grid grid-cols-2 gap-3 mb-6">
+                        <div class="quick-actions-grid">
                             <button onclick="quickDeposit()" class="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800 flex flex-col items-center justify-center hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition text-emerald-700 dark:text-emerald-400">
                                 <i class="ph-bold ph-piggy-bank text-2xl mb-1"></i>
                                 <span class="text-xs font-bold">Guardar</span>
@@ -316,7 +555,7 @@
                     </div>
 
                     <!-- 3. Trophy Room -->
-                    <div class="card p-6 dark:bg-slate-800 flex flex-col h-[400px]">
+                    <div class="card trophy-card">
                         <div class="flex justify-between items-center mb-4 shrink-0">
                             <h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2"><i class="ph-fill ph-trophy text-amber-500"></i> Conquistas</h3>
                             <span class="text-xs text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded-full" id="dash-badge-count">0/8</span>
@@ -328,9 +567,9 @@
 
             <!-- 2. FINANCE (Full CRUD) -->
             <div id="view-finance" class="hidden page-transition space-y-6 max-w-7xl mx-auto">
-                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div class="finance-grid">
                     <!-- Income -->
-                    <div class="lg:col-span-4 card p-6 dark:bg-slate-800 flex flex-col">
+                    <div class="card finance-card cards-stack">
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2"><i class="ph-bold ph-users-three text-indigo-500"></i> Fontes de Renda</h3>
                             <button onclick="addIncomeSource()" class="text-xs text-indigo-500 hover:text-indigo-700 font-bold">+ Adicionar</button>
@@ -345,7 +584,7 @@
                     </div>
 
                     <!-- Pots Simulator -->
-                    <div class="lg:col-span-8 card p-6 dark:bg-slate-800">
+                    <div class="card pots-card">
                         <h3 class="font-bold text-slate-700 dark:text-slate-200 mb-6 flex items-center gap-2"><i class="ph-bold ph-sliders text-indigo-500"></i> Distribuição dos Potes</h3>
                         
                         <!-- Pote 1 -->
@@ -420,9 +659,9 @@
                     <div class="lg:col-span-8 card p-0 flex flex-col overflow-hidden dark:bg-slate-800 dark:border-slate-700">
                         <div class="p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex flex-wrap gap-4 justify-between items-center shrink-0">
                             <div class="flex items-center gap-3">
-                                <button onclick="changeGoalIcon()" class="w-10 h-10 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-xl shadow-sm hover:scale-110 transition-transform cursor-pointer" id="active-goal-icon" title="Clique para mudar o ícone">📦</button>
+                                <div class="w-10 h-10 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-xl shadow-sm" id="active-goal-icon">📦</div>
                                 <div>
-                                    <input type="text" id="active-goal-title" class="bg-transparent border-none p-0 font-bold text-lg text-slate-800 dark:text-white focus:ring-0 w-48 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 rounded px-1" onchange="updateActiveGoal('title', this.value)" placeholder="Nome da meta">
+                                    <input type="text" id="active-goal-title" class="bg-transparent border-none p-0 font-bold text-lg text-slate-800 dark:text-white focus:ring-0 w-48 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 rounded px-1" onchange="updateActiveGoal('title', this.value)">
                                     <div class="flex items-center gap-2 text-xs text-slate-500">
                                         <i class="ph-bold ph-calendar"></i>
                                         <input type="date" id="active-goal-date" class="bg-transparent border-none p-0 text-xs font-medium text-slate-500 cursor-pointer w-24 h-4 focus:ring-0" onchange="updateActiveGoal('date', this.value)">
@@ -549,44 +788,29 @@
             initChartsDefaults();
             refreshAll();
             switchTab('dashboard');
-            showToast('Sistema carregado!', 'success');
+            if(!localStorage.getItem('seen_welcome_v16')) {
+                const welcomeModal = document.getElementById('welcome-modal');
+                if (welcomeModal) {
+                    welcomeModal.classList.remove('hidden');
+                    localStorage.setItem('seen_welcome_v16', 'true');
+                }
+            }
         });
 
         // --- CORE ---
-        let saveTimeout = null;
-        
         function loadData() {
             const stored = localStorage.getItem('imperioData_v16');
             if (stored) {
-                try {
-                    appData = JSON.parse(stored);
-                    // Validate data structure
-                    if(!appData.incomeSources || !appData.goals) {
-                        appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
-                    }
-                } catch(err) {
-                    console.error('Error loading data:', err);
-                    appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
-                }
+                appData = JSON.parse(stored);
+                if(!appData.incomeSources) appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
             } else {
                 appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
             }
         }
-        
-        function saveData(showFeedback = true) {
-            // Debounce saves to prevent excessive writes
-            if(saveTimeout) clearTimeout(saveTimeout);
-            
-            saveTimeout = setTimeout(() => {
-                try {
-                    localStorage.setItem('imperioData_v16', JSON.stringify(appData));
-                    if(showFeedback) showToast('💾 Salvo', 'success');
-                    refreshAll();
-                } catch(err) {
-                    console.error('Error saving data:', err);
-                    showToast('❌ Erro ao salvar', 'error');
-                }
-            }, 300);
+        function saveData() {
+            localStorage.setItem('imperioData_v16', JSON.stringify(appData));
+            showToast();
+            refreshAll();
         }
         function switchTab(tabId) {
             document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
@@ -597,25 +821,13 @@
             const nav = document.getElementById(`nav-${tabId}`);
             if(nav) nav.classList.add('active');
             
-            // Update page title
-            const titles = {
-                'dashboard': 'Visão Geral',
-                'finance': 'Financeiro',
-                'projects': 'Metas & Sonhos',
-                'roadmap': 'Jornada'
-            };
-            const titleEl = document.getElementById('page-title');
-            if(titleEl) titleEl.innerText = titles[tabId] || 'Empire OS';
-            
             if(tabId === 'projects') renderGoalTabs();
         }
-        
-        function toggleMobileMenu() {
-            const menu = document.getElementById('mobile-menu');
-            if(menu) menu.classList.toggle('hidden');
-        }
         function initTheme() { if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); }
-        function toggleTheme() { document.documentElement.classList.toggle('dark'); localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light'); }
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        }
         function initChartsDefaults() { Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif"; }
 
         // --- REFRESH ---
@@ -693,143 +905,84 @@
         function updateLevel() {
              const level = Math.floor(appData.xp / 1000) + 1;
              const xpCurr = appData.xp % 1000;
-             const rankEl = document.getElementById('user-rank');
-             if(rankEl) rankEl.innerText = `Nível ${level}`;
-             
-             const xpBarEl = document.getElementById('xp-bar');
-             if(xpBarEl) xpBarEl.style.width = (xpCurr/10)+'%';
-             
-             const xpBarSideEl = document.getElementById('xp-bar-side');
-             if(xpBarSideEl) xpBarSideEl.style.width = (xpCurr/10)+'%';
-             
-             const xpValSideEl = document.getElementById('xp-val-side');
-             if(xpValSideEl) xpValSideEl.innerText = `${xpCurr}/1000`;
+               const rankEl = document.getElementById('user-rank');
+               if(rankEl) rankEl.innerText = `Nível ${level}`;
+
+               const xpValEl = document.getElementById('xp-val');
+               if(xpValEl) xpValEl.innerText = `${xpCurr}/1000`;
+
+               const xpValSideEl = document.getElementById('xp-val-side');
+               if(xpValSideEl) xpValSideEl.innerText = `${xpCurr}/1000`;
+
+               const xpBarEl = document.getElementById('xp-bar');
+               if(xpBarEl) xpBarEl.style.width = (xpCurr/10)+'%';
+
+               const xpBarSideEl = document.getElementById('xp-bar-side');
+               if(xpBarSideEl) xpBarSideEl.style.width = (xpCurr/10)+'%';
+
+               const xpLevelDisplay = document.getElementById('xp-level-display');
+               if(xpLevelDisplay) xpLevelDisplay.innerText = level;
         }
 
         // --- CHARTS ---
         function updateCashflowChart(inc, surv, san, pot) {
             const ctx = document.getElementById('cashflowChart');
             if(!ctx) return;
-            
-            try {
-                if(charts.cash) charts.cash.destroy();
-                charts.cash = new Chart(ctx.getContext('2d'), {
-                    type: 'bar',
-                    data: {
-                        labels: ['Entrada', 'Saídas'],
-                        datasets: [
-                            { label: 'Renda', data: [inc || 0, 0], backgroundColor: '#6366f1', borderRadius: 4 },
-                            { label: 'Fixo', data: [0, surv || 0], backgroundColor: '#64748b', borderRadius: 4 },
-                            { label: 'Lazer', data: [0, san || 0], backgroundColor: '#f59e0b', borderRadius: 4 },
-                            { label: 'Futuro', data: [0, Math.max(0, pot || 0)], backgroundColor: '#10b981', borderRadius: 4 }
-                        ]
-                    },
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        scales: { 
-                            x: { stacked: true, grid: {display: false} }, 
-                            y: { stacked: true, display: false } 
-                        }, 
-                        plugins: { 
-                            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-                            tooltip: { enabled: true, mode: 'index', intersect: false }
-                        },
-                        animation: { duration: 500 }
-                    }
-                });
-            } catch(err) {
-                console.error('Error updating cashflow chart:', err);
-            }
+            if(charts.cash) charts.cash.destroy();
+            charts.cash = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Entrada', 'Saídas'],
+                    datasets: [
+                        { label: 'Renda', data: [inc, 0], backgroundColor: '#6366f1', borderRadius: 4 },
+                        { label: 'Fixo', data: [0, surv], backgroundColor: '#64748b', borderRadius: 4 },
+                        { label: 'Lazer', data: [0, san], backgroundColor: '#f59e0b', borderRadius: 4 },
+                        { label: 'Futuro', data: [0, Math.max(0,pot)], backgroundColor: '#10b981', borderRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, grid:{display:false} }, y: { stacked: true, display:false } }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } } }
+            });
         }
 
         function updateProjectionChart(start, monthly) {
             const ctx = document.getElementById('projectionChart');
             if(!ctx) return;
-            
-            try {
-                if(charts.proj) charts.proj.destroy();
-                const s = start || 0;
-                const m = monthly || 0;
-                charts.proj = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: ['Hoje', '3M', '6M', '12M'],
-                        datasets: [{
-                            label: 'Patrimônio',
-                            data: [s, s + (m * 3), s + (m * 6), s + (m * 12)],
-                            borderColor: '#fbbf24', 
-                            backgroundColor: 'rgba(251, 191, 36, 0.1)', 
-                            fill: true, 
-                            tension: 0.4, 
-                            pointRadius: 3,
-                            pointBackgroundColor: '#fbbf24',
-                            pointBorderColor: '#fff',
-                            pointBorderWidth: 2
-                        }]
-                    },
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        plugins: {
-                            legend: {display: false},
-                            tooltip: { 
-                                enabled: true,
-                                callbacks: {
-                                    label: (context) => `Patrimônio: ${fmtMoney(context.parsed.y)}`
-                                }
-                            }
-                        }, 
-                        scales: {x: {display: false}, y: {display: false}},
-                        animation: { duration: 500 }
-                    }
-                });
-            } catch(err) {
-                console.error('Error updating projection chart:', err);
-            }
+            if(charts.proj) charts.proj.destroy();
+            charts.proj = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: ['Hoje', '3M', '6M', '12M'],
+                    datasets: [{
+                        label: 'Patrimônio',
+                        data: [start, start+(monthly*3), start+(monthly*6), start+(monthly*12)],
+                        borderColor: '#fbbf24', backgroundColor: 'rgba(251, 191, 36, 0.1)', fill: true, tension: 0.4, pointRadius: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: {legend:{display:false}}, scales: {x:{display:false}, y:{display:false}} }
+            });
         }
 
         // --- FINANCE CRUD ---
         function renderIncomeList() {
             const el = document.getElementById('income-list');
             if(el) el.innerHTML = appData.incomeSources.map((inc, i) => `
-                <div class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg mb-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group hover-lift border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
-                    <i class="ph-bold ph-currency-circle-dollar text-indigo-500 text-lg"></i>
-                    <input value="${inc.name}" onchange="appData.incomeSources[${i}].name=this.value;saveData()" class="bg-transparent text-sm flex-grow outline-none text-slate-700 dark:text-slate-300 font-medium px-2 py-1 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome da fonte">
-                    <span class="text-xs text-slate-400">R$</span>
-                    <input type="number" value="${inc.value}" onchange="appData.incomeSources[${i}].value=parseFloat(this.value)||0;saveData()" class="bg-white dark:bg-slate-800 text-sm text-right w-24 font-bold outline-none text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 focus:border-indigo-500" placeholder="0.00" step="0.01">
-                    <button onclick="deleteIncome(${i})" class="text-slate-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all" title="Remover fonte">×</button>
+                <div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-900 rounded mb-1">
+                    <input value="${inc.name}" onchange="appData.incomeSources[${i}].name=this.value;saveData()" class="bg-transparent text-sm w-full outline-none text-slate-700 dark:text-slate-300">
+                    <input type="number" value="${inc.value}" onchange="appData.incomeSources[${i}].value=parseFloat(this.value)||0;saveData()" class="bg-transparent text-sm text-right w-20 font-bold outline-none text-slate-700 dark:text-slate-300">
+                    <button onclick="appData.incomeSources.splice(${i},1);saveData()" class="text-slate-400 hover:text-red-500 px-1">×</button>
                 </div>`).join('');
             const total = appData.incomeSources.reduce((a,b)=>a+b.value,0);
-            const totalEl = document.getElementById('total-income-display');
-            if(totalEl) totalEl.innerText = fmtMoney(total);
+            if(document.getElementById('total-income-display')) document.getElementById('total-income-display').innerText = fmtMoney(total);
         }
-        
-        function deleteIncome(i) {
-            const item = appData.incomeSources[i];
-            if(confirm(`Remover "${item.name}"?`)) {
-                appData.incomeSources.splice(i, 1);
-                saveData();
-                showToast('🗑️ Fonte de renda removida', 'info');
-            }
-        }
-        function addIncomeSource() { 
-            appData.incomeSources.push({id:Date.now(), name:'Nova Renda', value:0}); 
-            saveData(); 
-            showToast('✨ Fonte de renda adicionada!', 'success');
-            const list = document.getElementById('income-list');
-            if(list) list.lastElementChild?.classList.add('animate-slide-up');
-        }
+        function addIncomeSource() { appData.incomeSources.push({id:Date.now(), name:'Nova Renda', value:0}); saveData(); }
 
         function renderSurvivalList() {
             const el = document.getElementById('survival-list');
             if(el) el.innerHTML = appData.survivalBreakdown.map((item, i) => `
-                <div class="flex items-center gap-2 text-xs border-b border-slate-100 dark:border-slate-700 pb-2 mb-2 group hover:bg-slate-50 dark:hover:bg-slate-900/30 px-2 py-1 rounded transition-colors">
-                    <i class="ph-bold ph-house text-slate-400 text-sm"></i>
-                    <input value="${item.name}" onchange="appData.survivalBreakdown[${i}].name=this.value; saveData()" class="flex-grow bg-transparent outline-none text-slate-600 dark:text-slate-400 font-medium px-1 py-0.5 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome da despesa">
-                    <span class="text-slate-400">R$</span>
-                    <input type="number" value="${item.value}" onchange="appData.survivalBreakdown[${i}].value=parseFloat(this.value)||0; saveData()" class="w-20 text-right bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none font-bold text-slate-600 dark:text-slate-400 px-2 py-0.5 focus:border-indigo-500" placeholder="0.00" step="0.01">
-                    <button onclick="deleteSurvival(${i})" class="text-slate-300 hover:text-red-500 px-1 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all" title="Remover despesa">×</button>
+                <div class="flex items-center gap-2 text-xs border-b border-slate-100 dark:border-slate-700 pb-1 mb-1">
+                    <input value="${item.name}" onchange="appData.survivalBreakdown[${i}].name=this.value; saveData()" class="flex-grow bg-transparent outline-none text-slate-600 dark:text-slate-400">
+                    <input type="number" value="${item.value}" onchange="appData.survivalBreakdown[${i}].value=parseFloat(this.value)||0; saveData()" class="w-16 text-right bg-transparent outline-none font-bold text-slate-600 dark:text-slate-400">
+                    <button onclick="appData.survivalBreakdown.splice(${i},1); saveData()" class="text-slate-300 hover:text-red-500">×</button>
                 </div>`).join('');
             
             const total = appData.survivalBreakdown.reduce((a,b)=>a+b.value,0);
@@ -837,29 +990,14 @@
             
             const modalList = document.getElementById('calc-items-list');
             if(modalList) modalList.innerHTML = appData.survivalBreakdown.map((item, i) => `
-                <div class="flex items-center gap-2 p-2 border border-slate-100 dark:border-slate-700 rounded mb-2 hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
-                    <input value="${item.name}" onchange="appData.survivalBreakdown[${i}].name=this.value; saveData()" class="flex-grow bg-transparent outline-none text-sm font-medium text-slate-700 dark:text-slate-300 px-2 py-1 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Item">
-                    <span class="text-xs text-slate-400">R$</span>
-                    <input type="number" value="${item.value}" onchange="appData.survivalBreakdown[${i}].value=parseFloat(this.value)||0; saveData(); renderSurvivalList()" class="w-24 text-right bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm font-bold text-slate-700 dark:text-slate-300 focus:border-indigo-500" placeholder="0.00" step="0.01">
-                    <button onclick="deleteSurvival(${i})" class="text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Remover">×</button>
+                <div class="flex items-center gap-2 p-2 border border-slate-100 rounded mb-2">
+                    <input value="${item.name}" onchange="appData.survivalBreakdown[${i}].name=this.value; saveData()" class="flex-grow bg-transparent outline-none text-sm font-medium">
+                    <input type="number" value="${item.value}" onchange="appData.survivalBreakdown[${i}].value=parseFloat(this.value)||0; saveData(); renderSurvivalList()" class="w-24 text-right bg-slate-50 rounded p-1 text-sm font-bold">
+                    <button onclick="appData.survivalBreakdown.splice(${i},1); saveData(); renderSurvivalList()" class="text-red-400 px-2">×</button>
                 </div>`).join('');
-            const calcTotalEl = document.getElementById('calc-total');
-            if(calcTotalEl) calcTotalEl.innerText = fmtMoney(total);
+            if(document.getElementById('calc-total')) document.getElementById('calc-total').innerText = fmtMoney(total);
         }
-        
-        function deleteSurvival(i) {
-            const item = appData.survivalBreakdown[i];
-            if(confirm(`Remover "${item.name}"?`)) {
-                appData.survivalBreakdown.splice(i, 1);
-                saveData();
-                showToast('🗑️ Despesa removida', 'info');
-            }
-        }
-        function addSurvivalItem() { 
-            appData.survivalBreakdown.push({id:Date.now(), name:'Item', value:0}); 
-            saveData(); 
-            showToast('📋 Gasto adicionado!', 'success');
-        }
+        function addSurvivalItem() { appData.survivalBreakdown.push({id:Date.now(), name:'Item', value:0}); saveData(); }
         function toggleCalc(show) { const m=document.getElementById('calc-modal'); if(m) { m.classList.toggle('hidden', !show); if(show) renderSurvivalList(); } }
         function applyCalc() { toggleCalc(false); }
         
@@ -875,32 +1013,11 @@
         }
 
         // --- PROJECTS (SAFE RENDER) ---
-        function promptNewGoal() { 
-            showInputModal("Nome da Meta", val => { 
-                if(val && val.trim()) { 
-                    appData.goals.push({
-                        id:Date.now(), 
-                        title:val.trim(), 
-                        icon:"🎯", 
-                        targetDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0], 
-                        useBuffer:false, 
-                        items:[]
-                    }); 
-                    appData.activeGoalId = appData.goals.length - 1; 
-                    saveData(); 
-                    showToast('🎯 Meta criada com sucesso!', 'success');
-                    confetti({ particleCount: 30, spread: 50 });
-                } 
-            }); 
-        }
+        function promptNewGoal() { showInputModal("Nome da Meta", val => { if(val) { appData.goals.push({id:Date.now(), title:val, icon:"🎯", targetDate:"2026-12-31", useBuffer:false, items:[]}); appData.activeGoalId=appData.goals.length-1; saveData(); } }); }
         
         function renderGoalTabs() {
             const c = document.getElementById('goal-tabs-container');
             if(!c) return;
-            if(!appData.goals || appData.goals.length === 0) {
-                c.innerHTML = '<p class="text-sm text-slate-400 px-4">Nenhuma meta criada ainda</p>';
-                return;
-            }
             c.innerHTML = appData.goals.map((g, i) => `
                 <button onclick="appData.activeGoalId=${i}; saveData(); renderGoalTabs()" class="px-4 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap transition ${i===appData.activeGoalId ? 'bg-white dark:bg-slate-800 text-indigo-600 border-t-2 border-indigo-500' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}">
                     ${g.icon} ${g.title}
@@ -909,30 +1026,16 @@
         }
         
         function renderActiveGoal() {
-            if(!appData.goals || appData.goals.length === 0) return;
             const goal = appData.goals[appData.activeGoalId];
-            if(!goal) {
-                appData.activeGoalId = 0;
-                if(!appData.goals[0]) return;
-                return renderActiveGoal();
-            }
+            if(!goal) return;
             
             const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; }
             const safeText = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; }
             
             safeSet('active-goal-title', goal.title);
             safeText('active-goal-icon', goal.icon);
-            
-            // Format date properly
-            const dateInput = document.getElementById('active-goal-date');
-            if(dateInput && goal.targetDate) {
-                const date = new Date(goal.targetDate + 'T00:00:00');
-                const formattedDate = date.toISOString().split('T')[0];
-                dateInput.value = formattedDate;
-            }
-            
-            const buf = document.getElementById('goal-safety-buffer'); 
-            if(buf) buf.checked = goal.useBuffer;
+            safeSet('active-goal-date', goal.targetDate);
+            const buf = document.getElementById('goal-safety-buffer'); if(buf) buf.checked = goal.useBuffer;
             
             const list = document.getElementById('goal-items-list');
             if(list) {
@@ -940,13 +1043,10 @@
                 list.innerHTML = goal.items.map((item, i) => {
                     total += item.cost;
                     return `
-                    <div class="flex gap-2 p-2 border-b border-slate-100 dark:border-slate-700 items-center group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                        <input value="${item.name}" onchange="updateGoalItem(${i},'name',this.value)" class="flex-grow bg-transparent outline-none text-sm text-slate-600 dark:text-slate-300 px-2 py-1 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome do item">
-                        <select onchange="updateGoalItem(${i},'category',this.value)" class="text-xs bg-transparent border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-slate-500 dark:text-slate-400 focus:border-indigo-500 outline-none">
-                            ${CAT_GOAL.map(cat => `<option value="${cat}" ${item.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
-                        </select>
-                        <input type="number" value="${item.cost}" onchange="updateGoalItem(${i},'cost',parseFloat(this.value)||0)" class="w-24 text-right bg-transparent border border-slate-200 dark:border-slate-600 rounded outline-none text-sm font-bold px-2 py-1 focus:border-indigo-500" placeholder="0.00">
-                        <button onclick="deleteGoalItem(${i})" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all px-2 py-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded" title="Remover item">×</button>
+                    <div class="flex gap-2 p-2 border-b border-slate-100 dark:border-slate-700 items-center group">
+                        <input value="${item.name}" onchange="updateGoalItem(${i},'name',this.value)" class="flex-grow bg-transparent outline-none text-sm text-slate-600 dark:text-slate-300">
+                        <input type="number" value="${item.cost}" onchange="updateGoalItem(${i},'cost',parseFloat(this.value))" class="w-20 text-right bg-transparent outline-none text-sm font-bold">
+                        <button onclick="deleteGoalItem(${i})" class="opacity-0 group-hover:opacity-100 text-red-400">×</button>
                     </div>`;
                 }).join('');
                 const finalTotal = goal.useBuffer ? total * 1.1 : total;
@@ -968,58 +1068,10 @@
             }
         }
         function updateGoalItem(i,f,v) { appData.goals[appData.activeGoalId].items[i][f] = v; saveData(); }
-        function addGoalItem() { 
-            if(!appData.goals[appData.activeGoalId]) return;
-            appData.goals[appData.activeGoalId].items.push({id:Date.now(), name:'Novo item', category:'Outro', cost:0}); 
-            saveData(); 
-            showToast('➕ Item adicionado à meta!', 'success');
-        }
-        
-        function deleteGoalItem(i) { 
-            const item = appData.goals[appData.activeGoalId]?.items[i];
-            if(!item) return;
-            const listEl = document.getElementById('goal-items-list');
-            const itemEl = listEl?.children[i];
-            if(itemEl) {
-                itemEl.classList.add('animate-delete');
-                setTimeout(() => {
-                    appData.goals[appData.activeGoalId].items.splice(i, 1); 
-                    saveData();
-                    showToast('🗑️ Item removido', 'info');
-                }, 300);
-            } else {
-                appData.goals[appData.activeGoalId].items.splice(i, 1); 
-                saveData();
-            }
-        }
-        
-        function deleteActiveGoal() { 
-            if(confirm("Tem certeza que deseja deletar esta meta?")) { 
-                const goalName = appData.goals[appData.activeGoalId]?.title || 'Meta';
-                appData.goals.splice(appData.activeGoalId, 1); 
-                appData.activeGoalId = 0; 
-                saveData(); 
-                showToast(`🗑️ ${goalName} deletada`, 'info');
-            } 
-        }
-        function updateActiveGoal(f,v) { 
-            const g = appData.goals[appData.activeGoalId]; 
-            if(!g) return;
-            if(f === 'title') g.title = v; 
-            if(f === 'date') g.targetDate = v; 
-            if(f === 'buffer') g.useBuffer = v; 
-            saveData(); 
-        }
-        
-        function changeGoalIcon() {
-            const icons = ['🎯', '🏠', '✈️', '🚗', '💍', '🎓', '💰', '🏖️', '📱', '💻', '🎮', '📚', '🎨', '🏋️', '🎸', '📦', '🌟', '🔥', '💎', '🏆'];
-            const currentIcon = appData.goals[appData.activeGoalId]?.icon || '📦';
-            const currentIndex = icons.indexOf(currentIcon);
-            const nextIndex = (currentIndex + 1) % icons.length;
-            appData.goals[appData.activeGoalId].icon = icons[nextIndex];
-            saveData();
-            showToast(`Ícone alterado para ${icons[nextIndex]}`, 'success');
-        }
+        function addGoalItem() { appData.goals[appData.activeGoalId].items.push({id:Date.now(), name:'', category:'Outro', cost:0}); saveData(); }
+        function deleteGoalItem(i) { appData.goals[appData.activeGoalId].items.splice(i,1); saveData(); }
+        function deleteActiveGoal() { if(confirm("Deletar?")) { appData.goals.splice(appData.activeGoalId,1); appData.activeGoalId=0; saveData(); } }
+        function updateActiveGoal(f,v) { const g=appData.goals[appData.activeGoalId]; if(f==='title')g.title=v; if(f==='date')g.targetDate=v; if(f==='buffer')g.useBuffer=v; saveData(); }
 
         // --- DEBTS ---
         function renderDebts() {
@@ -1029,107 +1081,49 @@
             list.innerHTML = appData.debts.map((d,i) => {
                 total += d.total;
                 return `
-                <div class="flex items-center justify-between p-2 border-b border-slate-100 dark:border-slate-700 text-xs group hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors rounded">
-                    <i class="ph-bold ph-warning text-red-400 text-sm mr-1"></i>
-                    <input value="${d.name}" onchange="appData.debts[${i}].name=this.value;saveData()" class="bg-transparent outline-none font-medium text-slate-600 dark:text-slate-300 flex-grow px-1 py-0.5 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Nome da dívida">
-                    <span class="text-slate-400 mx-1">R$</span>
-                    <input type="number" value="${d.total}" onchange="appData.debts[${i}].total=parseFloat(this.value)||0;saveData()" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none font-bold text-red-500 text-right w-24 px-2 py-0.5 focus:border-red-500" placeholder="0.00" step="0.01">
-                    <button onclick="deleteDebt(${i})" class="text-slate-300 hover:text-red-500 px-1 py-0.5 ml-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all" title="Remover dívida">×</button>
+                <div class="flex items-center justify-between p-2 border-b border-slate-100 dark:border-slate-700 text-xs">
+                    <input value="${d.name}" onchange="appData.debts[${i}].name=this.value;saveData()" class="bg-transparent outline-none font-medium text-slate-600 dark:text-slate-300 w-24">
+                    <input type="number" value="${d.total}" onchange="appData.debts[${i}].total=parseFloat(this.value)||0;saveData()" class="bg-transparent outline-none font-bold text-red-500 text-right w-20">
+                    <button onclick="appData.debts.splice(${i},1);saveData()" class="text-slate-300 hover:text-red-500">×</button>
                 </div>`;
             }).join('');
-            const totalEl = document.getElementById('total-debt-mini');
-            if(totalEl) totalEl.innerText = fmtMoney(total);
+            if(document.getElementById('total-debt-mini')) document.getElementById('total-debt-mini').innerText = fmtMoney(total);
         }
-        
-        function deleteDebt(i) {
-            const debt = appData.debts[i];
-            if(confirm(`Remover dívida "${debt.name}"?`)) {
-                appData.debts.splice(i, 1);
-                saveData();
-                showToast('🗑️ Dívida removida', 'info');
-            }
-        }
-        function addDebtItem() { 
-            appData.debts.push({id:Date.now(), name:'Nova Dívida', total:0}); 
-            saveData(); 
-            showToast('📊 Dívida registrada', 'info');
-        }
+        function addDebtItem() { appData.debts.push({id:Date.now(), name:'Nova', total:0}); saveData(); }
 
         // --- TIMELINE ---
-        function promptNewPhase() { 
-            showInputModal("Nome da Nova Fase", v => { 
-                if(v && v.trim()) { 
-                    const colors = ['bg-slate-500', 'bg-indigo-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-red-500', 'bg-purple-500'];
-                    const icons = ['ph-flag', 'ph-rocket', 'ph-target', 'ph-star', 'ph-lightbulb', 'ph-check-circle'];
-                    appData.timelinePhases.push({
-                        id: Date.now(), 
-                        phase: v.trim(), 
-                        icon: icons[appData.timelinePhases.length % icons.length], 
-                        color: colors[appData.timelinePhases.length % colors.length], 
-                        tasks: []
-                    }); 
-                    saveData(); 
-                    showToast('🚀 Nova fase criada!', 'success');
-                    confetti({ particleCount: 30, spread: 40 });
-                } 
-            }); 
-        }
+        function promptNewPhase() { showInputModal("Nome da Fase", v => { if(v) { appData.timelinePhases.push({id:Date.now(), phase:v, icon:"ph-flag", color:"bg-slate-500", tasks:[]}); saveData(); } }); }
         function renderTimeline() {
             const el = document.getElementById('timeline-container');
             if(!el) return;
             el.innerHTML = appData.timelinePhases.map((p, i) => `
-                <div class="relative pl-8 pb-8 border-l-2 border-slate-200 dark:border-slate-700 last:border-0 ml-4 animate-slide-up">
-                    <div class="absolute -left-[11px] top-0 w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 ${p.color} text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform"><i class="ph-bold ${p.icon} text-xs"></i></div>
-                    <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all hover-lift">
-                        <div class="flex justify-between items-center mb-3">
-                            <input value="${p.phase}" onchange="appData.timelinePhases[${i}].phase=this.value; saveData()" class="font-bold text-sm bg-transparent outline-none text-slate-800 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-900 px-2 py-1 rounded transition-colors" placeholder="Nome da fase">
+                <div class="relative pl-8 pb-8 border-l-2 border-slate-200 dark:border-slate-700 last:border-0 ml-4">
+                    <div class="absolute -left-[11px] top-0 w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 ${p.color} text-white flex items-center justify-center shadow-sm"><i class="ph-bold ${p.icon} text-xs"></i></div>
+                    <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <div class="flex justify-between items-center mb-2">
+                            <input value="${p.phase}" onchange="appData.timelinePhases[${i}].phase=this.value; saveData()" class="font-bold text-sm bg-transparent outline-none text-slate-800 dark:text-white">
                             <div class="flex gap-2">
-                                <button onclick="deletePhase(${i})" class="text-slate-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Deletar fase"><i class="ph-bold ph-trash text-sm"></i></button>
-                                <button onclick="addPhaseTask(${i})" class="text-indigo-500 hover:text-indigo-600 font-bold text-xs px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all">+ Passo</button>
+                                <button onclick="deletePhase(${i})" class="text-slate-300 hover:text-red-500"><i class="ph-bold ph-trash"></i></button>
+                                <button onclick="addPhaseTask(${i})" class="text-indigo-500 font-bold text-xs">+ Passo</button>
                             </div>
                         </div>
-                        <div class="space-y-2">
-                            ${p.tasks.length > 0 ? p.tasks.map((t, ti) => `
-                            <div class="flex items-center gap-2 group hover:bg-slate-50 dark:hover:bg-slate-900/50 px-2 py-1.5 rounded transition-colors">
-                                <input type="checkbox" ${t.checked?'checked':''} onchange="toggleTask(${i},${ti})" class="accent-indigo-500 cursor-pointer w-4 h-4 rounded focus:ring-2 focus:ring-indigo-500">
-                                <input value="${t.text}" onchange="appData.timelinePhases[${i}].tasks[${ti}].text=this.value; saveData()" class="text-xs bg-transparent outline-none flex-grow ${t.checked?'line-through text-slate-400':'text-slate-600 dark:text-slate-300 font-medium'} px-1 py-0.5 rounded focus:bg-white dark:focus:bg-slate-800" placeholder="Descreva a tarefa">
-                                <button onclick="deleteTask(${i},${ti})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 text-xs px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Remover tarefa">×</button>
-                            </div>`).join('') : '<p class="text-xs text-slate-400 italic px-2 py-1">Nenhuma tarefa ainda</p>'}
+                        <div class="space-y-1">
+                            ${p.tasks.map((t, ti) => `<div class="flex items-center gap-2 group">
+                                <input type="checkbox" ${t.checked?'checked':''} onchange="toggleTask(${i},${ti})" class="accent-indigo-500 cursor-pointer">
+                                <input value="${t.text}" onchange="appData.timelinePhases[${i}].tasks[${ti}].text=this.value; saveData()" class="text-xs bg-transparent outline-none w-full ${t.checked?'line-through text-slate-400':'text-slate-600 dark:text-slate-300'}">
+                                <button onclick="appData.timelinePhases[${i}].tasks.splice(${ti},1); saveData()" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 text-xs">×</button>
+                            </div>`).join('')}
                         </div>
                     </div>
                 </div>`).join('');
-        }
-        
-        function deleteTask(phaseIdx, taskIdx) {
-            const task = appData.timelinePhases[phaseIdx]?.tasks[taskIdx];
-            if(!task) return;
-            if(confirm(`Remover tarefa "${task.text}"?`)) {
-                appData.timelinePhases[phaseIdx].tasks.splice(taskIdx, 1);
-                saveData();
-                showToast('🗑️ Tarefa removida', 'info');
-            }
         }
         function toggleTask(p,t) { 
             appData.timelinePhases[p].tasks[t].checked = !appData.timelinePhases[p].tasks[t].checked; 
             if(appData.timelinePhases[p].tasks[t].checked) { appData.xp += 100; confetti({particleCount:40,spread:50,origin:{y:0.7}}); }
             saveData(); 
         }
-        function addPhaseTask(i) { 
-            if(!appData.timelinePhases[i]) return;
-            appData.timelinePhases[i].tasks.push({id: Date.now(), text: "Novo passo", checked: false}); 
-            saveData(); 
-            showToast('✅ Tarefa adicionada!', 'success');
-        }
-        
-        function deletePhase(i) { 
-            const phase = appData.timelinePhases[i];
-            if(!phase) return;
-            if(confirm(`Deletar a fase "${phase.phase}"? Todas as tarefas serão removidas.`)) { 
-                appData.timelinePhases.splice(i, 1); 
-                saveData(); 
-                showToast('🗑️ Fase removida', 'info');
-            } 
-        }
+        function addPhaseTask(i) { appData.timelinePhases[i].tasks.push({id:Date.now(), text:"Novo passo", checked:false}); saveData(); }
+        function deletePhase(i) { if(confirm("Deletar fase?")) { appData.timelinePhases.splice(i,1); saveData(); } }
 
         // --- BADGES ---
         function checkBadges() {
@@ -1151,172 +1145,30 @@
         }
 
         // --- ACTIONS ---
-        function quickDeposit() { 
-            showInputModal("Valor para Guardar (R$)", v => { 
-                const amount = parseFloat(v);
-                if(v && amount > 0) { 
-                    appData.vaultTotal += amount; 
-                    appData.vaultHistory.push({ date: new Date().toISOString(), amount });
-                    appData.xp += Math.min(100, Math.floor(amount / 10)); 
-                    confetti({ particleCount: 50, spread: 70 }); 
-                    saveData(); 
-                    showToast(`💰 R$ ${amount.toFixed(2)} guardado!`, 'success');
-                } else {
-                    showToast('❌ Valor inválido', 'error');
-                }
-            }); 
-        }
-        
-        function incrementStreak() { 
-            appData.streak++; 
-            appData.xp += 20; 
-            saveData(); 
-            confetti({ particleCount: 20, spread: 30 }); 
-            showToast(`🔥 Sequência de ${appData.streak} dias!`, 'success');
-        }
+        function quickDeposit() { showInputModal("Valor para Guardar", v=>{ if(v && parseFloat(v)) { appData.vaultTotal += parseFloat(v); appData.xp+=50; confetti(); saveData(); } }); }
+        function incrementStreak() { appData.streak++; appData.xp+=20; saveData(); confetti({particleCount:20,spread:30}); }
 
         // --- MODAL UTILS ---
         function showInputModal(title, callback) {
-            const modalTitle = document.getElementById('modal-title');
-            const modalInput = document.getElementById('modal-input');
-            const modal = document.getElementById('input-modal');
-            
-            if(modalTitle) modalTitle.innerText = title;
-            if(modalInput) {
-                modalInput.value = '';
-                modalInput.focus();
-            }
-            if(modal) modal.classList.remove('hidden');
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-input').value = '';
+            document.getElementById('input-modal').classList.remove('hidden');
+            document.getElementById('modal-input').focus();
             modalCallback = callback;
         }
-        
-        function closeInputModal() { 
-            const modal = document.getElementById('input-modal');
-            if(modal) modal.classList.add('hidden'); 
-            modalCallback = null;
+        function closeInputModal() { document.getElementById('input-modal').classList.add('hidden'); }
+        document.getElementById('modal-confirm-btn').onclick = () => { if(modalCallback) modalCallback(document.getElementById('modal-input').value); closeInputModal(); };
+        function closeModal() {
+            const welcomeModal = document.getElementById('welcome-modal');
+            if (welcomeModal) welcomeModal.classList.add('hidden');
         }
-        
-        // Handle Enter key in modal
-        document.addEventListener('DOMContentLoaded', () => {
-            const modalInput = document.getElementById('modal-input');
-            if(modalInput) {
-                modalInput.addEventListener('keypress', (e) => {
-                    if(e.key === 'Enter') {
-                        e.preventDefault();
-                        document.getElementById('modal-confirm-btn')?.click();
-                    }
-                });
-            }
-            
-            const confirmBtn = document.getElementById('modal-confirm-btn');
-            if(confirmBtn) {
-                confirmBtn.onclick = () => { 
-                    if(modalCallback) {
-                        const input = document.getElementById('modal-input');
-                        modalCallback(input?.value || ''); 
-                    }
-                    closeInputModal(); 
-                };
-            }
-            
-            // Close modal on backdrop click
-            const modal = document.getElementById('input-modal');
-            if(modal) {
-                modal.addEventListener('click', (e) => {
-                    if(e.target === modal) closeInputModal();
-                });
-            }
-            
-            // ESC key to close modals
-            document.addEventListener('keydown', (e) => {
-                if(e.key === 'Escape') {
-                    closeInputModal();
-                    const calcModal = document.getElementById('calc-modal');
-                    if(calcModal && !calcModal.classList.contains('hidden')) {
-                        toggleCalc(false);
-                    }
-                }
-            });
-            
-            // Prevent form submission on Enter in number inputs
-            document.addEventListener('keypress', (e) => {
-                if(e.key === 'Enter' && e.target.type === 'number') {
-                    e.preventDefault();
-                    e.target.blur();
-                }
-            });
-        });
 
         // --- UTILS ---
-        function fmtMoney(n) { 
-            if(isNaN(n)) n = 0;
-            return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); 
-        }
-        
-        function showToast(message = 'Salvo', type = 'success') { 
-            const t = document.getElementById('last-saved'); 
-            if(t) { 
-                t.innerText = message;
-                t.className = `text-xs font-bold flex items-center gap-1 transition-opacity px-3 py-1.5 rounded-full ${
-                    type === 'success' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                    type === 'error' ? 'text-red-600 bg-red-50 dark:bg-red-900/20' :
-                    'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                }`;
-                t.style.opacity = 1; 
-                t.classList.add('animate-slide-up');
-                setTimeout(() => {
-                    t.style.opacity = 0;
-                    t.classList.remove('animate-slide-up');
-                }, 2500); 
-            } 
-        }
-        function downloadData() { 
-            try {
-                const dataStr = JSON.stringify(appData, null, 2);
-                const blob = new Blob([dataStr], {type: "application/json"}); 
-                const a = document.createElement('a'); 
-                a.href = URL.createObjectURL(blob); 
-                const date = new Date().toISOString().split('T')[0];
-                a.download = `empire_os_backup_${date}.json`; 
-                a.click(); 
-                showToast('💾 Backup criado!', 'success');
-            } catch(err) {
-                showToast('❌ Erro ao criar backup', 'error');
-                console.error(err);
-            }
-        }
-        
-        function uploadData(input) { 
-            const f = input.files[0]; 
-            if(!f) return; 
-            const r = new FileReader(); 
-            r.onload = e => { 
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if(confirm("Restaurar dados do backup? Isso irá sobrescrever os dados atuais.")) { 
-                        appData = data; 
-                        saveData(); 
-                        showToast('✅ Dados restaurados!', 'success');
-                        setTimeout(() => location.reload(), 1500);
-                    }
-                } catch(err) {
-                    showToast('❌ Arquivo inválido', 'error');
-                    console.error(err);
-                }
-            }; 
-            r.readAsText(f); 
-        }
-        
-        function resetAllData() { 
-            if(confirm("⚠️ Tem certeza que deseja RESETAR todos os dados? Esta ação não pode ser desfeita!")) {
-                if(confirm("Última confirmação: Todos os dados serão perdidos. Continuar?")) {
-                    localStorage.removeItem('imperioData_v16'); 
-                    showToast('🔄 Resetando...', 'info');
-                    setTimeout(() => location.reload(), 1000);
-                }
-            } 
-        }
-        function toggleTheme() { document.documentElement.classList.toggle('dark'); localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light'); }
+        function fmtMoney(n) { return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+        function showToast() { const t=document.getElementById('last-saved'); if(t) { t.style.opacity=1; setTimeout(()=>t.style.opacity=0,2000); } }
+        function downloadData() { const blob = new Blob([JSON.stringify(appData)], {type: "application/json"}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `empire_os_backup.json`; a.click(); }
+        function uploadData(input) { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { if(confirm("Restaurar?")) { appData = JSON.parse(e.target.result); saveData(); location.reload(); }}; r.readAsText(f); }
+        function resetAllData() { if(confirm("Reiniciar tudo?")) { localStorage.removeItem('imperioData_v17'); localStorage.removeItem('seen_welcome_v17'); location.reload(); } }
         function animateValue(obj, start, end, duration) {
             let startTimestamp = null;
             const step = (timestamp) => {
@@ -1335,25 +1187,8 @@
             charts[id] = new Chart(ctx, { type, data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } } });
         }
         function initChartsDefaults() { Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif"; }
-        function addDeposit() {
-            const input = document.getElementById('deposit-input');
-            if(!input || !input.value) return;
-            const amount = parseFloat(input.value);
-            if(amount <= 0 || isNaN(amount)) {
-                alert('Digite um valor válido!');
-                return;
-            }
-            appData.vaultTotal += amount;
-            appData.vaultHistory.push({ date: new Date().toISOString(), amount });
-            appData.xp += Math.min(100, Math.floor(amount / 10));
-            input.value = '';
-            confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
-            saveData();
-        }
-
         function renderVault() {
-            const vaultTotalEl = document.getElementById('vault-total');
-            if(vaultTotalEl) vaultTotalEl.innerText = fmtMoney(appData.vaultTotal);
+            if(document.getElementById('vault-total')) document.getElementById('vault-total').innerText = fmtMoney(appData.vaultTotal);
             
             const totalGoal = appData.goals.reduce((acc, g) => acc + g.items.reduce((a,b)=>a+b.cost,0)*(g.useBuffer?1.1:1), 0) + appData.debts.reduce((a,b)=>a+b.total,0);
             if(document.getElementById('vault-goal')) document.getElementById('vault-goal').innerText = fmtMoney(totalGoal);
