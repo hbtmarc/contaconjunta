@@ -1,0 +1,2139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Financeiro Pessoal</title>
+    
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Import Maps -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?external=react,react-dom",
+        "zustand": "https://esm.sh/zustand@4.5.2?external=react",
+        "zustand/middleware": "https://esm.sh/zustand@4.5.2/middleware?external=react",
+        "clsx": "https://esm.sh/clsx",
+        "tailwind-merge": "https://esm.sh/tailwind-merge",
+        "lucide-react": "https://esm.sh/lucide-react@0.363.0?external=react",
+        "date-fns": "https://esm.sh/date-fns@3.6.0",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js"
+      }
+    }
+    </script>
+    
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              neutral: {
+                50: '#f8fafc',
+                100: '#f1f5f9',
+                200: '#e2e8f0',
+                300: '#cbd5e1',
+                400: '#94a3b8',
+                500: '#64748b',
+                600: '#475569',
+                700: '#334155',
+                800: '#1e293b',
+                900: '#0f172a',
+                950: '#020617'
+              },
+              primary: {
+                50: '#ecfdf5',
+                100: '#d1fae5',
+                200: '#a7f3d0',
+                300: '#6ee7b7',
+                400: '#34d399',
+                500: '#10b981',
+                600: '#059669',
+                700: '#047857',
+                800: '#065f46',
+                900: '#064e3b',
+                950: '#022c22'
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif']
+            }
+          }
+        }
+      }
+    </script>
+    
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useMemo } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
+      import { create } from 'zustand';
+      import { persist } from 'zustand/middleware';
+      import clsx from 'clsx';
+      import { twMerge } from 'tailwind-merge';
+      import { 
+        LayoutDashboard,
+        ListOrdered,
+        UploadCloud,
+        Settings as SettingsIcon,
+        Menu,
+        X,
+        ArrowUpCircle,
+        ArrowDownCircle,
+        Wallet
+      } from 'lucide-react';
+      import { format, parseISO } from 'date-fns';
+      import { initializeApp } from 'firebase/app';
+      import { 
+        getAuth, 
+        signInWithPopup, 
+        GoogleAuthProvider,
+        signOut as firebaseSignOut,
+        onAuthStateChanged 
+      } from 'firebase/auth';
+      import { 
+        getFirestore, 
+        collection, 
+        doc,
+        getDocs, 
+        setDoc,
+        deleteDoc,
+        query, 
+        where,
+        onSnapshot
+      } from 'firebase/firestore';
+      
+      // ============================================================================
+      // FIREBASE CONFIGURATION
+      // ============================================================================
+      
+      /**
+       * 🔥 COLE SUA CONFIGURAÇÃO DO FIREBASE AQUI 🔥
+       * 
+       * Substitua o objeto abaixo pela sua configuração real do Firebase Console:
+       * 1. Acesse https://console.firebase.google.com
+       * 2. Selecione seu projeto
+       * 3. Vá em Project Settings > General
+       * 4. Em "Your apps", copie o firebaseConfig
+       * 5. Cole aqui substituindo os valores de exemplo
+       */
+const firebaseConfig = {
+
+  apiKey: "AIzaSyAIXU9oqsbzFHEQ0Vdx2uBpTrdGk2YSOS8",
+
+  authDomain: "contaconjunta-marc35.firebaseapp.com",
+
+  projectId: "contaconjunta-marc35",
+
+  storageBucket: "contaconjunta-marc35.firebasestorage.app",
+
+  messagingSenderId: "193293125640",
+
+  appId: "1:193293125640:web:7952ebbb4f3bd5fb4a69bd",
+
+  measurementId: "G-VJ61KTVCV8"
+
+};
+
+      
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      const googleProvider = new GoogleAuthProvider();
+      
+      // ============================================================================
+      // UTILITY FUNCTIONS
+      // ============================================================================
+      
+      /**
+       * Merge classes with Tailwind CSS conflict resolution
+       * @param {...any} inputs - Class names to merge
+       * @returns {string} Merged class names
+       */
+      const cn = (...inputs) => {
+        return twMerge(clsx(inputs));
+      };
+      
+      /**
+       * Format numbers as BRL currency
+       * @param {number} value
+       * @returns {string}
+       */
+      const formatCurrency = (value = 0) => {
+        return new Intl.NumberFormat('pt-BR', {
+          style: 'currency',
+          currency: 'BRL'
+        }).format(value || 0);
+      };
+      
+      /**
+       * Safely parse ISO date strings
+       * @param {string} value
+       * @returns {Date|null}
+       */
+      const parseToDate = (value) => {
+        if (!value) return null;
+        try {
+          const parsed = parseISO(value);
+          return Number.isNaN(parsed?.getTime()) ? null : parsed;
+        } catch (error) {
+          return null;
+        }
+      };
+      
+      /**
+       * Check if date is in target month/year
+       * @param {string} value
+       * @param {number} month
+       * @param {number} year
+       * @returns {boolean}
+       */
+      const isSameMonthYear = (value, month, year) => {
+        const date = parseToDate(value);
+        if (!date || !month || !year) return false;
+        return date.getMonth() + 1 === month && date.getFullYear() === year;
+      };
+      
+      /**
+       * Format ISO date to dd/MM/yyyy
+       * @param {string} value
+       * @returns {string}
+       */
+      const formatDateLabel = (value) => {
+        const date = parseToDate(value);
+        if (!date) return '—';
+        return format(date, 'dd/MM/yyyy');
+      };
+      
+      // ============================================================================
+      // CREDIT CARD ENGINE
+      // ============================================================================
+      
+      /**
+       * Calculate installment transactions for credit card purchases
+       * @param {number} totalAmount - Total purchase amount
+       * @param {number} installmentsCount - Number of installments
+       * @param {string} purchaseDate - Purchase date (ISO string)
+       * @param {number} cardClosingDay - Card closing day (1-31)
+       * @returns {Array<{dueDate: string, amount: number, installment: {current: number, total: number}}>}
+       */
+      const calculateInstallments = (totalAmount, installmentsCount, purchaseDate, cardClosingDay) => {
+        if (!totalAmount || !installmentsCount || installmentsCount < 1) {
+          return [];
+        }
+        
+        const purchaseDateObj = parseToDate(purchaseDate);
+        if (!purchaseDateObj) {
+          return [];
+        }
+        
+        // Calculate base installment value and remainder
+        const baseInstallmentValue = Math.floor((totalAmount * 100) / installmentsCount) / 100;
+        const remainder = Math.round((totalAmount - baseInstallmentValue * installmentsCount) * 100) / 100;
+        
+        // Determine first installment month
+        const purchaseDay = purchaseDateObj.getDate();
+        let firstInstallmentMonth = purchaseDateObj.getMonth();
+        let firstInstallmentYear = purchaseDateObj.getFullYear();
+        
+        // If purchase was made on or after closing day, push to next billing cycle
+        if (purchaseDay >= cardClosingDay) {
+          firstInstallmentMonth += 1;
+          if (firstInstallmentMonth > 11) {
+            firstInstallmentMonth = 0;
+            firstInstallmentYear += 1;
+          }
+        }
+        
+        // Generate installments
+        const installments = [];
+        for (let i = 0; i < installmentsCount; i++) {
+          const installmentMonth = (firstInstallmentMonth + i) % 12;
+          const installmentYear = firstInstallmentYear + Math.floor((firstInstallmentMonth + i) / 12);
+          
+          // Add remainder to first installment to ensure exact total
+          const installmentAmount = i === 0 
+            ? baseInstallmentValue + remainder 
+            : baseInstallmentValue;
+          
+          // Create due date (typically 5-10 days after closing, using 10 as default)
+          const dueDay = Math.min(cardClosingDay + 10, 28); // Avoid invalid dates
+          const dueDate = new Date(installmentYear, installmentMonth, dueDay);
+          
+          installments.push({
+            dueDate: dueDate.toISOString(),
+            amount: installmentAmount,
+            installment: {
+              current: i + 1,
+              total: installmentsCount
+            }
+          });
+        }
+        
+        return installments;
+      };
+      
+      /**
+       * Validate if installment calculation is correct
+       * @param {Array} installments
+       * @param {number} expectedTotal
+       * @returns {boolean}
+       */
+      const validateInstallmentsTotal = (installments, expectedTotal) => {
+        const calculatedTotal = installments.reduce((sum, inst) => sum + inst.amount, 0);
+        return Math.abs(calculatedTotal - expectedTotal) < 0.01; // Allow 1 cent tolerance
+      };
+      
+      // ============================================================================
+      // OFX PARSER
+      // ============================================================================
+      
+      /**
+       * Parse OFX date format (YYYYMMDDHHMMSS) to ISO string
+       * @param {string} ofxDate - Date in OFX format
+       * @returns {string|null} ISO date string or null if invalid
+       */
+      const parseOFXDate = (ofxDate) => {
+        if (!ofxDate || ofxDate.length < 8) return null;
+        
+        try {
+          const year = ofxDate.substring(0, 4);
+          const month = ofxDate.substring(4, 6);
+          const day = ofxDate.substring(6, 8);
+          const hour = ofxDate.substring(8, 10) || '00';
+          const minute = ofxDate.substring(10, 12) || '00';
+          const second = ofxDate.substring(12, 14) || '00';
+          
+          const date = new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            parseInt(hour),
+            parseInt(minute),
+            parseInt(second)
+          );
+          
+          if (isNaN(date.getTime())) {
+            return null;
+          }
+          
+          return date.toISOString();
+        } catch (error) {
+          console.error('Error parsing OFX date:', ofxDate, error);
+          return null;
+        }
+      };
+      
+      /**
+       * Parse OFX amount (handles negative values)
+       * @param {string} amount - Amount string from OFX
+       * @returns {number} Parsed amount
+       */
+      const parseOFXAmount = (amount) => {
+        if (!amount) return 0;
+        const cleaned = amount.trim().replace(/,/g, '');
+        return parseFloat(cleaned) || 0;
+      };
+      
+      /**
+       * Extract value from OFX tag
+       * @param {string} content - OFX content
+       * @param {string} tag - Tag name without brackets
+       * @returns {string} Extracted value or empty string
+       */
+      const extractOFXTag = (content, tag) => {
+        const regex = new RegExp(`<${tag}>([^<]*)`);
+        const match = content.match(regex);
+        return match ? match[1].trim() : '';
+      };
+      
+      /**
+       * Parse OFX file content and extract transactions
+       * @param {string} fileContent - Raw OFX file content
+       * @returns {Array<{date: string, amount: number, type: string, description: string, fitId: string}>}
+       */
+      const parseOFX = (fileContent) => {
+        if (!fileContent || typeof fileContent !== 'string') {
+          console.error('Invalid OFX content');
+          return [];
+        }
+        
+        const transactions = [];
+        
+        // Extract all STMTTRN blocks using regex
+        const transactionRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
+        let match;
+        
+        while ((match = transactionRegex.exec(fileContent)) !== null) {
+          const block = match[1];
+          
+          try {
+            // Extract fields from transaction block
+            const dtPosted = extractOFXTag(block, 'DTPOSTED');
+            const trnAmt = extractOFXTag(block, 'TRNAMT');
+            const memo = extractOFXTag(block, 'MEMO');
+            const fitId = extractOFXTag(block, 'FITID');
+            const trnType = extractOFXTag(block, 'TRNTYPE');
+            const checkNum = extractOFXTag(block, 'CHECKNUM');
+            
+            // Parse date and amount
+            const date = parseOFXDate(dtPosted);
+            const amount = parseOFXAmount(trnAmt);
+            
+            if (!date || amount === 0) {
+              console.warn('Skipping invalid transaction:', { dtPosted, trnAmt });
+              continue;
+            }
+            
+            // Determine transaction type (income/expense)
+            const type = amount > 0 ? 'income' : 'expense';
+            const absoluteAmount = Math.abs(amount);
+            
+            // Build description
+            let description = memo || trnType || 'Transação importada';
+            if (checkNum) {
+              description += ` (Cheque ${checkNum})`;
+            }
+            
+            transactions.push({
+              date,
+              amount: absoluteAmount,
+              type,
+              description: description.trim(),
+              fitId: fitId || `${dtPosted}_${trnAmt}`,
+              category: '', // Will be set by user
+              paymentMethod: 'debit' // Default
+            });
+          } catch (error) {
+            console.error('Error parsing transaction block:', error, block);
+          }
+        }
+        
+        console.log(`Parsed ${transactions.length} transactions from OFX`);
+        return transactions;
+      };
+      
+      /**
+       * Read file content as text
+       * @param {File} file
+       * @returns {Promise<string>}
+       */
+      const readFileAsText = (file) => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = (e) => reject(e);
+          reader.readAsText(file, 'ISO-8859-1'); // Brazilian banks often use this encoding
+        });
+      };
+      
+      /**
+       * Debounce function to limit execution rate
+       * @param {Function} func - Function to debounce
+       * @param {number} wait - Wait time in milliseconds
+       * @returns {Function} Debounced function
+       */
+      const debounce = (func, wait) => {
+        let timeout;
+        return function executedFunction(...args) {
+          const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+          };
+          clearTimeout(timeout);
+          timeout = setTimeout(later, wait);
+        };
+      };
+      
+      // ============================================================================
+      // TYPE DEFINITIONS (JSDoc)
+      // ============================================================================
+      
+      /**
+       * @typedef {Object} TransactionInstallments
+       * @property {number} current - Current installment number
+       * @property {number} total - Total number of installments
+       */
+      
+      /**
+       * @typedef {Object} Transaction
+       * @property {string} id - Unique identifier
+       * @property {string} description - Transaction description
+       * @property {number} amount - Transaction amount (positive number)
+       * @property {'income'|'expense'} type - Transaction type
+       * @property {string} date - ISO date string
+       * @property {string} category - Transaction category
+       * @property {'credit'|'debit'} paymentMethod - Payment method
+       * @property {TransactionInstallments|null} installments - Installment info (null for single payment)
+       * @property {string} userId - User ID who owns this transaction
+       * @property {string} [fitId] - OFX FITID for duplicate detection
+       */
+      
+      /**
+       * @typedef {Object} Account
+       * @property {string} id - Unique identifier
+       * @property {string} name - Account name (e.g., "Banco Itaú", "Carteira")
+       * @property {string} type - Account type (e.g., "bank", "wallet", "investment")
+       * @property {number} balance - Current balance
+       * @property {string} userId - User ID who owns this account
+       */
+      
+      /**
+       * @typedef {Object} GlobalFilter
+       * @property {number|null} month - Filter month (1-12, null for all)
+       * @property {number|null} year - Filter year (null for all)
+       */
+      
+      /**
+       * @typedef {Object} User
+       * @property {string} id - User ID
+       * @property {string} email - User email
+       * @property {string} name - User display name
+       */
+      
+      /**
+       * @typedef {Object} AppState
+       * @property {User|null} currentUser - Currently logged in user
+       * @property {Transaction[]} transactions - List of all transactions
+       * @property {Account[]} accounts - List of all accounts
+       * @property {boolean} isSidebarOpen - Sidebar open/closed state
+       * @property {GlobalFilter} globalFilter - Global date filter
+       */
+      
+      /**
+       * @typedef {Object} AppActions
+       * @property {(transaction: Omit<Transaction, 'id'>) => void} addTransaction - Add new transaction
+       * @property {(id: string) => void} removeTransaction - Remove transaction by ID
+       * @property {(id: string, updates: Partial<Transaction>) => void} updateTransaction - Update transaction
+       * @property {(filter: Partial<GlobalFilter>) => void} setGlobalFilter - Set date filter
+       * @property {(user: User|null) => void} setCurrentUser - Set current user
+       * @property {(isOpen: boolean) => void} setSidebarOpen - Toggle sidebar
+       * @property {(account: Omit<Account, 'id'>) => void} addAccount - Add new account
+       * @property {(id: string) => void} removeAccount - Remove account by ID
+       */
+      
+      /** @typedef {AppState & AppActions} AppStore */
+      
+      // ============================================================================
+      // ZUSTAND STORE WITH PERSISTENCE
+      // ============================================================================
+      
+      const useAppStore = create(
+        persist(
+          (set, get) => ({
+            // ========== STATE ==========
+            currentUser: null,
+            transactions: [],
+            accounts: [],
+            isSidebarOpen: true,
+            globalFilter: {
+              month: null,
+              year: null
+            },
+            
+            // ========== ACTIONS ==========
+            
+            /**
+             * Add a new transaction
+             * @param {Omit<Transaction, 'id'>} transaction
+             */
+            addTransaction: (transaction) => {
+              const newTransaction = {
+                ...transaction,
+                id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+              };
+              
+              set((state) => ({
+                transactions: [...state.transactions, newTransaction]
+              }));
+            },
+            
+            /**
+             * Remove transaction by ID
+             * @param {string} id
+             */
+            removeTransaction: (id) => {
+              set((state) => ({
+                transactions: state.transactions.filter(t => t.id !== id)
+              }));
+            },
+            
+            /**
+             * Update transaction by ID
+             * @param {string} id
+             * @param {Partial<Transaction>} updates
+             */
+            updateTransaction: (id, updates) => {
+              set((state) => ({
+                transactions: state.transactions.map(t => 
+                  t.id === id ? { ...t, ...updates } : t
+                )
+              }));
+            },
+            
+            /**
+             * Set global date filter
+             * @param {Partial<GlobalFilter>} filter
+             */
+            setGlobalFilter: (filter) => {
+              set((state) => ({
+                globalFilter: {
+                  ...state.globalFilter,
+                  ...filter
+                }
+              }));
+            },
+            
+            /**
+             * Set current user
+             * @param {User|null} user
+             */
+            setCurrentUser: (user) => {
+              set({ currentUser: user });
+            },
+            
+            /**
+             * Toggle sidebar open/closed
+             * @param {boolean} isOpen
+             */
+            setSidebarOpen: (isOpen) => {
+              set({ isSidebarOpen: isOpen });
+            },
+            
+            /**
+             * Add a new account
+             * @param {Omit<Account, 'id'>} account
+             */
+            addAccount: (account) => {
+              const newAccount = {
+                ...account,
+                id: `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+              };
+              
+              set((state) => ({
+                accounts: [...state.accounts, newAccount]
+              }));
+            },
+            
+            /**
+             * Remove account by ID
+             * @param {string} id
+             */
+            removeAccount: (id) => {
+              set((state) => ({
+                accounts: state.accounts.filter(a => a.id !== id)
+              }));
+            }
+          }),
+          {
+            name: 'financial-app-storage', // LocalStorage key
+            version: 1,
+            // Optionally, you can add migration logic here
+            migrate: (persistedState, version) => {
+              // Handle migrations between versions if needed
+              return persistedState;
+            }
+          }
+        )
+      );
+      
+      // ============================================================================
+      // FIREBASE SYNC HOOK
+      // ============================================================================
+      
+      /**
+       * Custom hook for Firebase authentication and Firestore synchronization
+       * @returns {Object} Auth state and sync functions
+       */
+      const useFirebaseSync = () => {
+        const [isInitialized, setIsInitialized] = useState(false);
+        const [isSyncing, setIsSyncing] = useState(false);
+        const [syncError, setSyncError] = useState(null);
+        
+        const { 
+          currentUser, 
+          setCurrentUser, 
+          transactions, 
+          addTransaction,
+          removeTransaction,
+          updateTransaction
+        } = useAppStore();
+        
+        // ========== AUTHENTICATION ==========
+        
+        /**
+         * Sign in with Google popup
+         */
+        const signInWithGoogle = async () => {
+          try {
+            setSyncError(null);
+            const result = await signInWithPopup(auth, googleProvider);
+            const user = result.user;
+            
+            setCurrentUser({
+              id: user.uid,
+              email: user.email,
+              name: user.displayName || user.email
+            });
+            
+            console.log('✅ Logged in:', user.email);
+            return user;
+          } catch (error) {
+            console.error('Login error:', error);
+            setSyncError(`Erro ao fazer login: ${error.message}`);
+            throw error;
+          }
+        };
+        
+        /**
+         * Sign out
+         */
+        const signOut = async () => {
+          try {
+            await firebaseSignOut(auth);
+            setCurrentUser(null);
+            console.log('✅ Logged out');
+          } catch (error) {
+            console.error('Logout error:', error);
+            setSyncError(`Erro ao fazer logout: ${error.message}`);
+          }
+        };
+        
+        // ========== FIRESTORE SYNC ==========
+        
+        /**
+         * Load transactions from Firestore
+         */
+        const loadTransactionsFromFirestore = async (userId) => {
+          if (!userId) return;
+          
+          try {
+            setIsSyncing(true);
+            setSyncError(null);
+            
+            const transactionsRef = collection(db, 'transactions');
+            const q = query(transactionsRef, where('userId', '==', userId));
+            const snapshot = await getDocs(q);
+            
+            console.log(`📥 Loading ${snapshot.size} transactions from Firestore`);
+            
+            // Clear local transactions and load from cloud
+            const store = useAppStore.getState();
+            store.transactions = [];
+            
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              addTransaction({
+                ...data,
+                id: doc.id
+              });
+            });
+            
+            console.log('✅ Transactions loaded from cloud');
+          } catch (error) {
+            console.error('Error loading transactions:', error);
+            setSyncError(`Erro ao carregar dados: ${error.message}`);
+          } finally {
+            setIsSyncing(false);
+          }
+        };
+        
+        /**
+         * Save transaction to Firestore
+         */
+        const saveTransactionToFirestore = async (transaction) => {
+          if (!currentUser) return;
+          
+          try {
+            const transactionRef = doc(db, 'transactions', transaction.id);
+            await setDoc(transactionRef, {
+              ...transaction,
+              userId: currentUser.id,
+              updatedAt: new Date().toISOString()
+            });
+            
+            console.log('✅ Transaction synced to Firestore:', transaction.id);
+          } catch (error) {
+            console.error('Error saving transaction:', error);
+            setSyncError(`Erro ao salvar: ${error.message}`);
+          }
+        };
+        
+        /**
+         * Delete transaction from Firestore
+         */
+        const deleteTransactionFromFirestore = async (transactionId) => {
+          if (!currentUser) return;
+          
+          try {
+            const transactionRef = doc(db, 'transactions', transactionId);
+            await deleteDoc(transactionRef);
+            console.log('✅ Transaction deleted from Firestore:', transactionId);
+          } catch (error) {
+            console.error('Error deleting transaction:', error);
+            setSyncError(`Erro ao deletar: ${error.message}`);
+          }
+        };
+        
+        // Debounced sync function (wait 2 seconds after last change)
+        const debouncedSync = useMemo(
+          () => debounce((transaction) => {
+            if (currentUser) {
+              saveTransactionToFirestore(transaction);
+            }
+          }, 2000),
+          [currentUser]
+        );
+        
+        // ========== EFFECTS ==========
+        
+        // Monitor auth state changes
+        useEffect(() => {
+          const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+              setCurrentUser({
+                id: user.uid,
+                email: user.email,
+                name: user.displayName || user.email
+              });
+              
+              // Load transactions when user logs in
+              if (!isInitialized) {
+                loadTransactionsFromFirestore(user.uid);
+                setIsInitialized(true);
+              }
+            } else {
+              setCurrentUser(null);
+              setIsInitialized(false);
+            }
+          });
+          
+          return () => unsubscribe();
+        }, []);
+        
+        // Monitor transaction changes and sync to Firestore
+        useEffect(() => {
+          if (!currentUser || !isInitialized) return;
+          
+          // Get the last transaction (most recently added/updated)
+          const lastTransaction = transactions[transactions.length - 1];
+          
+          if (lastTransaction) {
+            debouncedSync(lastTransaction);
+          }
+        }, [transactions, currentUser, isInitialized, debouncedSync]);
+        
+        // Real-time listener for Firestore changes (optional)
+        useEffect(() => {
+          if (!currentUser || !isInitialized) return;
+          
+          const transactionsRef = collection(db, 'transactions');
+          const q = query(transactionsRef, where('userId', '==', currentUser.id));
+          
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              const data = { ...change.doc.data(), id: change.doc.id };
+              
+              if (change.type === 'added') {
+                // Check if transaction already exists locally
+                const exists = transactions.some(t => t.id === data.id);
+                if (!exists) {
+                  console.log('📥 New transaction from cloud:', data.id);
+                  addTransaction(data);
+                }
+              } else if (change.type === 'modified') {
+                console.log('📝 Transaction updated from cloud:', data.id);
+                updateTransaction(data.id, data);
+              } else if (change.type === 'removed') {
+                console.log('🗑️ Transaction deleted from cloud:', data.id);
+                removeTransaction(data.id);
+              }
+            });
+          }, (error) => {
+            console.error('Firestore listener error:', error);
+          });
+          
+          return () => unsubscribe();
+        }, [currentUser, isInitialized]);
+        
+        return {
+          currentUser,
+          isInitialized,
+          isSyncing,
+          syncError,
+          signInWithGoogle,
+          signOut,
+          loadTransactionsFromFirestore,
+          saveTransactionToFirestore,
+          deleteTransactionFromFirestore
+        };
+      };
+      
+      // ============================================================================
+      // UI COMPONENTS LIBRARY
+      // ============================================================================
+      
+      // ---------- CARD COMPONENTS ----------
+      
+      /**
+       * Card Container Component
+       */
+      const Card = ({ children, className, ...props }) => {
+        return (
+          <div
+            className={cn(
+              "bg-white rounded-lg shadow-sm border border-neutral-200",
+              className
+            )}
+            {...props}
+          >
+            {children}
+          </div>
+        );
+      };
+      
+      const CardHeader = ({ children, className, ...props }) => {
+        return (
+          <div
+            className={cn("px-6 py-4 border-b border-neutral-200", className)}
+            {...props}
+          >
+            {children}
+          </div>
+        );
+      };
+      
+      const CardTitle = ({ children, className, ...props }) => {
+        return (
+          <h3
+            className={cn("text-lg font-semibold text-neutral-900", className)}
+            {...props}
+          >
+            {children}
+          </h3>
+        );
+      };
+      
+      const CardContent = ({ children, className, ...props }) => {
+        return (
+          <div className={cn("px-6 py-4", className)} {...props}>
+            {children}
+          </div>
+        );
+      };
+      
+      // ---------- BUTTON COMPONENT ----------
+      
+      /**
+       * Button Component with variants
+       * @param {'primary'|'secondary'|'ghost'|'danger'} variant
+       */
+      const Button = ({ 
+        children, 
+        className, 
+        variant = 'primary', 
+        disabled = false,
+        type = 'button',
+        ...props 
+      }) => {
+        const variantStyles = {
+          primary: "bg-primary-600 hover:bg-primary-700 text-white shadow-sm",
+          secondary: "bg-neutral-100 hover:bg-neutral-200 text-neutral-900 border border-neutral-300",
+          ghost: "hover:bg-neutral-100 text-neutral-700",
+          danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm"
+        };
+        
+        return (
+          <button
+            type={type}
+            disabled={disabled}
+            className={cn(
+              "px-4 py-2 rounded-lg font-medium transition-all duration-200",
+              "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              variantStyles[variant],
+              className
+            )}
+            {...props}
+          >
+            {children}
+          </button>
+        );
+      };
+      
+      // ---------- INPUT COMPONENT ----------
+      
+      /**
+       * Input Component
+       */
+      const Input = ({ 
+        className, 
+        label,
+        error,
+        ...props 
+      }) => {
+        return (
+          <div className="w-full">
+            {label && (
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                {label}
+              </label>
+            )}
+            <input
+              className={cn(
+                "w-full px-3 py-2 rounded-lg border border-neutral-300",
+                "bg-white text-neutral-900 placeholder:text-neutral-400",
+                "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent",
+                "disabled:bg-neutral-50 disabled:cursor-not-allowed",
+                "transition-all duration-200",
+                error && "border-red-500 focus:ring-red-500",
+                className
+              )}
+              {...props}
+            />
+            {error && (
+              <p className="mt-1 text-sm text-red-600">{error}</p>
+            )}
+          </div>
+        );
+      };
+      
+      // ---------- SELECT COMPONENT ----------
+      
+      /**
+       * Select Component
+       */
+      const Select = ({ 
+        children,
+        className, 
+        label,
+        error,
+        ...props 
+      }) => {
+        return (
+          <div className="w-full">
+            {label && (
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                {label}
+              </label>
+            )}
+            <select
+              className={cn(
+                "w-full px-3 py-2 rounded-lg border border-neutral-300",
+                "bg-white text-neutral-900",
+                "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent",
+                "disabled:bg-neutral-50 disabled:cursor-not-allowed",
+                "transition-all duration-200",
+                error && "border-red-500 focus:ring-red-500",
+                className
+              )}
+              {...props}
+            >
+              {children}
+            </select>
+            {error && (
+              <p className="mt-1 text-sm text-red-600">{error}</p>
+            )}
+          </div>
+        );
+      };
+      
+      // ---------- BADGE COMPONENT ----------
+      
+      /**
+       * Badge Component
+       * @param {'income'|'expense'|'neutral'|'success'|'warning'|'info'} variant
+       */
+      const Badge = ({ 
+        children, 
+        className, 
+        variant = 'neutral',
+        ...props 
+      }) => {
+        const variantStyles = {
+          income: "bg-primary-100 text-primary-800 border-primary-200",
+          expense: "bg-red-100 text-red-800 border-red-200",
+          neutral: "bg-neutral-100 text-neutral-800 border-neutral-200",
+          success: "bg-green-100 text-green-800 border-green-200",
+          warning: "bg-amber-100 text-amber-800 border-amber-200",
+          info: "bg-blue-100 text-blue-800 border-blue-200"
+        };
+        
+        return (
+          <span
+            className={cn(
+              "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",
+              variantStyles[variant],
+              className
+            )}
+            {...props}
+          >
+            {children}
+          </span>
+        );
+      };
+      
+      // ---------- MODAL COMPONENT ----------
+      
+      /**
+       * Modal Component with backdrop
+       */
+      const Modal = ({ 
+        isOpen, 
+        onClose, 
+        children, 
+        title,
+        className 
+      }) => {
+        useEffect(() => {
+          if (isOpen) {
+            document.body.style.overflow = 'hidden';
+          } else {
+            document.body.style.overflow = 'unset';
+          }
+          
+          return () => {
+            document.body.style.overflow = 'unset';
+          };
+        }, [isOpen]);
+        
+        useEffect(() => {
+          const handleEscape = (e) => {
+            if (e.key === 'Escape' && isOpen) {
+              onClose();
+            }
+          };
+          
+          document.addEventListener('keydown', handleEscape);
+          return () => document.removeEventListener('keydown', handleEscape);
+        }, [isOpen, onClose]);
+        
+        if (!isOpen) return null;
+        
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div 
+              className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
+              onClick={onClose}
+            />
+            
+            {/* Modal Content */}
+            <div 
+              className={cn(
+                "relative bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto",
+                "animate-in fade-in zoom-in duration-200",
+                className
+              )}
+            >
+              {title && (
+                <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-neutral-900">
+                    {title}
+                  </h2>
+                  <button
+                    onClick={onClose}
+                    className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              
+              <div className="px-6 py-4">
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      };
+      
+      // ---------- TRANSACTION FORM COMPONENT ----------
+      
+      /**
+       * Transaction Form Component
+       */
+      const TransactionForm = ({ isOpen, onClose }) => {
+        const { addTransaction } = useAppStore();
+        const [formData, setFormData] = useState({
+          description: '',
+          amount: '',
+          date: new Date().toISOString().split('T')[0],
+          category: '',
+          type: 'expense',
+          paymentMethod: 'debit',
+          isInstallment: false,
+          installmentsCount: 1,
+          cardClosingDay: 5
+        });
+        
+        const [errors, setErrors] = useState({});
+        
+        const categories = [
+          'Alimentação',
+          'Transporte',
+          'Saúde',
+          'Educação',
+          'Lazer',
+          'Moradia',
+          'Vestuário',
+          'Investimentos',
+          'Outros'
+        ];
+        
+        const handleChange = (field, value) => {
+          setFormData(prev => ({ ...prev, [field]: value }));
+          if (errors[field]) {
+            setErrors(prev => ({ ...prev, [field]: null }));
+          }
+        };
+        
+        const validateForm = () => {
+          const newErrors = {};
+          
+          if (!formData.description.trim()) {
+            newErrors.description = 'Descrição é obrigatória';
+          }
+          
+          const amount = parseFloat(formData.amount);
+          if (!formData.amount || isNaN(amount) || amount <= 0) {
+            newErrors.amount = 'Valor deve ser maior que zero';
+          }
+          
+          if (!formData.date) {
+            newErrors.date = 'Data é obrigatória';
+          }
+          
+          if (formData.isInstallment) {
+            const installments = parseInt(formData.installmentsCount);
+            if (!installments || installments < 2 || installments > 48) {
+              newErrors.installmentsCount = 'Parcelas devem estar entre 2 e 48';
+            }
+            
+            const closingDay = parseInt(formData.cardClosingDay);
+            if (!closingDay || closingDay < 1 || closingDay > 31) {
+              newErrors.cardClosingDay = 'Dia de fechamento inválido';
+            }
+          }
+          
+          setErrors(newErrors);
+          return Object.keys(newErrors).length === 0;
+        };
+        
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          
+          if (!validateForm()) {
+            return;
+          }
+          
+          const amount = parseFloat(formData.amount);
+          const userId = 'default-user'; // TODO: Get from auth
+          
+          if (formData.isInstallment && formData.paymentMethod === 'credit') {
+            // Generate installment transactions
+            const installments = calculateInstallments(
+              amount,
+              parseInt(formData.installmentsCount),
+              formData.date,
+              parseInt(formData.cardClosingDay)
+            );
+            
+            // Add all installment transactions
+            installments.forEach((inst) => {
+              addTransaction({
+                description: `${formData.description} (${inst.installment.current}/${inst.installment.total})`,
+                amount: inst.amount,
+                type: formData.type,
+                date: inst.dueDate,
+                category: formData.category,
+                paymentMethod: formData.paymentMethod,
+                installments: inst.installment,
+                userId
+              });
+            });
+          } else {
+            // Add single transaction
+            addTransaction({
+              description: formData.description,
+              amount,
+              type: formData.type,
+              date: new Date(formData.date).toISOString(),
+              category: formData.category,
+              paymentMethod: formData.paymentMethod,
+              installments: null,
+              userId
+            });
+          }
+          
+          // Reset form and close
+          setFormData({
+            description: '',
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            category: '',
+            type: 'expense',
+            paymentMethod: 'debit',
+            isInstallment: false,
+            installmentsCount: 1,
+            cardClosingDay: 5
+          });
+          setErrors({});
+          onClose();
+        };
+        
+        return (
+          <Modal isOpen={isOpen} onClose={onClose} title="Nova Transação" className="max-w-lg">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Input
+                label="Descrição"
+                value={formData.description}
+                onChange={(e) => handleChange('description', e.target.value)}
+                error={errors.description}
+                placeholder="Ex: Compra no supermercado"
+              />
+              
+              <Input
+                label="Valor (R$)"
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.amount}
+                onChange={(e) => handleChange('amount', e.target.value)}
+                error={errors.amount}
+                placeholder="0.00"
+              />
+              
+              <Input
+                label="Data"
+                type="date"
+                value={formData.date}
+                onChange={(e) => handleChange('date', e.target.value)}
+                error={errors.date}
+              />
+              
+              <Select
+                label="Categoria"
+                value={formData.category}
+                onChange={(e) => handleChange('category', e.target.value)}
+              >
+                <option value="">Selecione uma categoria</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </Select>
+              
+              <Select
+                label="Tipo"
+                value={formData.type}
+                onChange={(e) => handleChange('type', e.target.value)}
+              >
+                <option value="expense">Despesa</option>
+                <option value="income">Receita</option>
+              </Select>
+              
+              <Select
+                label="Forma de Pagamento"
+                value={formData.paymentMethod}
+                onChange={(e) => handleChange('paymentMethod', e.target.value)}
+              >
+                <option value="debit">Débito</option>
+                <option value="credit">Crédito</option>
+              </Select>
+              
+              {formData.paymentMethod === 'credit' && (
+                <div className="space-y-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.isInstallment}
+                      onChange={(e) => handleChange('isInstallment', e.target.checked)}
+                      className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                    />
+                    <span className="text-sm font-medium text-neutral-700">Parcelado?</span>
+                  </label>
+                  
+                  {formData.isInstallment && (
+                    <>
+                      <Input
+                        label="Quantidade de Parcelas"
+                        type="number"
+                        min="2"
+                        max="48"
+                        value={formData.installmentsCount}
+                        onChange={(e) => handleChange('installmentsCount', e.target.value)}
+                        error={errors.installmentsCount}
+                      />
+                      
+                      <Input
+                        label="Dia de Fechamento do Cartão"
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={formData.cardClosingDay}
+                        onChange={(e) => handleChange('cardClosingDay', e.target.value)}
+                        error={errors.cardClosingDay}
+                        placeholder="Ex: 5"
+                      />
+                      
+                      {formData.amount && formData.installmentsCount > 1 && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className="text-sm text-blue-800">
+                            <strong>Simulação:</strong> {formData.installmentsCount}x de aproximadamente{' '}
+                            {formatCurrency(parseFloat(formData.amount) / parseInt(formData.installmentsCount))}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+                  Cancelar
+                </Button>
+                <Button type="submit" variant="primary" className="flex-1">
+                  Salvar
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        );
+      };
+      
+      // ============================================================================
+      // AUTH BUTTON COMPONENT
+      // ============================================================================
+      
+      const AuthButton = () => {
+        const { currentUser, signInWithGoogle, signOut, isSyncing } = useFirebaseSync();
+        
+        if (isSyncing) {
+          return (
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-600">
+              <div className="animate-spin h-4 w-4 border-2 border-primary-600 border-t-transparent rounded-full" />
+              <span>Sincronizando...</span>
+            </div>
+          );
+        }
+        
+        if (currentUser) {
+          return (
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden sm:block">
+                <p className="text-xs text-neutral-500">Logado como</p>
+                <p className="text-sm font-medium text-neutral-900">{currentUser.name}</p>
+              </div>
+              <Button variant="secondary" onClick={signOut} className="text-sm">
+                Sair
+              </Button>
+            </div>
+          );
+        }
+        
+        return (
+          <Button onClick={signInWithGoogle} className="text-sm">
+            Login com Google
+          </Button>
+        );
+      };
+      
+      // ============================================================================
+      // LAYOUT COMPONENT
+      // ============================================================================
+      
+      const Layout = ({ children }) => {
+        const { isSidebarOpen, setSidebarOpen } = useAppStore();
+        const navItems = [
+          { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+          { label: 'Transações', to: '/transactions', icon: ListOrdered },
+          { label: 'Importação', to: '/import', icon: UploadCloud },
+          { label: 'Configurações', to: '/settings', icon: SettingsIcon }
+        ];
+        
+        const closeSidebar = () => setSidebarOpen(false);
+        const openSidebar = () => setSidebarOpen(true);
+        
+        return (
+          <div className="min-h-screen bg-neutral-100 flex">
+            <div
+              className={cn(
+                "lg:hidden fixed inset-0 bg-neutral-900/40 backdrop-blur-sm transition-opacity",
+                isSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+              )}
+              onClick={closeSidebar}
+            />
+            
+            <aside
+              className={cn(
+                "fixed inset-y-0 left-0 w-64 bg-white border-r border-neutral-200 flex flex-col z-50",
+                "transition-transform duration-200 ease-in-out transform",
+                isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+                "lg:static lg:translate-x-0"
+              )}
+            >
+              <div className="px-6 py-5 border-b border-neutral-200 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">Sistema</p>
+                  <p className="text-base font-semibold text-neutral-900">Financeiro Pessoal</p>
+                </div>
+                <button
+                  className="lg:hidden text-neutral-500 hover:text-neutral-900"
+                  onClick={closeSidebar}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                {navItems.map(({ label, to, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) => cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-lg border",
+                      "text-neutral-600 border-transparent hover:bg-neutral-50",
+                      isActive && "text-primary-700 bg-primary-50 border-primary-200"
+                    )}
+                    end={to === '/'}
+                    onClick={closeSidebar}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="ml-3">{label}</span>
+                  </NavLink>
+                ))}
+              </nav>
+              
+              <div className="px-6 py-4 border-t border-neutral-200">
+                <p className="text-xs text-neutral-500">Ambiente Seguro</p>
+                <p className="text-sm font-medium text-neutral-900">Versão 0.1</p>
+              </div>
+            </aside>
+            
+            <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+              <header className="bg-white border-b border-neutral-200 px-4 lg:px-8 py-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    className="lg:hidden p-2 rounded-lg border border-neutral-200"
+                    onClick={openSidebar}
+                  >
+                    <Menu className="w-5 h-5 text-neutral-700" />
+                  </button>
+                  <div>
+                    <p className="text-xs text-neutral-500 uppercase tracking-wide">Painel Principal</p>
+                    <h1 className="text-lg font-semibold text-neutral-900">Sistema Financeiro</h1>
+                  </div>
+                </div>
+                <AuthButton />
+              </header>
+              
+              <main className="flex-1 p-4 lg:p-8">{children}</main>
+            </div>
+          </div>
+        );
+      };
+      
+      // ============================================================================
+      // DASHBOARD PAGE
+      // ============================================================================
+      
+      const Dashboard = () => {
+        const { transactions, globalFilter } = useAppStore();
+        const [isFormOpen, setIsFormOpen] = useState(false);
+        const now = useMemo(() => new Date(), []);
+        const activePeriod = useMemo(() => ({
+          month: globalFilter.month ?? now.getMonth() + 1,
+          year: globalFilter.year ?? now.getFullYear()
+        }), [globalFilter, now]);
+        
+        const filteredTransactions = useMemo(() => {
+          return transactions.filter((transaction) =>
+            isSameMonthYear(transaction.date, activePeriod.month, activePeriod.year)
+          );
+        }, [transactions, activePeriod]);
+        
+        const summary = useMemo(() => {
+          return filteredTransactions.reduce(
+            (acc, transaction) => {
+              if (transaction.type === 'income') {
+                acc.income += transaction.amount;
+              }
+              if (transaction.type === 'expense') {
+                acc.expense += transaction.amount;
+              }
+              return acc;
+            },
+            { income: 0, expense: 0 }
+          );
+        }, [filteredTransactions]);
+        
+        const balance = summary.income - summary.expense;
+        
+        const lastTransactions = useMemo(() => {
+          return [...filteredTransactions]
+            .sort((a, b) => {
+              const dateA = parseToDate(a.date)?.getTime() || 0;
+              const dateB = parseToDate(b.date)?.getTime() || 0;
+              return dateB - dateA;
+            })
+            .slice(0, 5);
+        }, [filteredTransactions]);
+        
+        const summaryCards = [
+          {
+            title: 'Receitas',
+            value: formatCurrency(summary.income),
+            icon: ArrowUpCircle,
+            accent: 'text-primary-600 bg-primary-50'
+          },
+          {
+            title: 'Despesas',
+            value: formatCurrency(summary.expense),
+            icon: ArrowDownCircle,
+            accent: 'text-red-600 bg-red-50'
+          },
+          {
+            title: 'Saldo',
+            value: formatCurrency(balance),
+            icon: Wallet,
+            accent: 'text-blue-600 bg-blue-50'
+          }
+        ];
+        
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-neutral-900">Dashboard</h2>
+                <p className="text-sm text-neutral-600">Visão geral das suas finanças</p>
+              </div>
+              <Button onClick={() => setIsFormOpen(true)}>
+                + Nova Transação
+              </Button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {summaryCards.map(({ title, value, icon: Icon, accent }) => (
+                <Card key={title}>
+                  <CardContent className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-neutral-500">{title}</p>
+                      <p className="text-2xl font-semibold text-neutral-900 mt-2">{value}</p>
+                    </div>
+                    <span className={cn('p-3 rounded-full', accent)}>
+                      <Icon className="w-6 h-6" />
+                    </span>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Últimas transações</CardTitle>
+                <p className="text-sm text-neutral-500">
+                  Período: {String(activePeriod.month).padStart(2, '0')}/{activePeriod.year}
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-neutral-500">
+                        <th className="py-2">Descrição</th>
+                        <th className="py-2">Categoria</th>
+                        <th className="py-2">Tipo</th>
+                        <th className="py-2">Data</th>
+                        <th className="py-2 text-right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {lastTransactions.length === 0 && (
+                        <tr>
+                          <td colSpan="5" className="py-6 text-center text-neutral-500">
+                            Nenhuma transação no período selecionado.
+                          </td>
+                        </tr>
+                      )}
+                      {lastTransactions.map((transaction) => (
+                        <tr key={transaction.id}>
+                          <td className="py-3 font-medium text-neutral-900">{transaction.description}</td>
+                          <td className="py-3">
+                            <Badge variant={transaction.type === 'income' ? 'income' : 'expense'}>
+                              {transaction.category || 'Geral'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 capitalize text-neutral-600">{transaction.type}</td>
+                          <td className="py-3 text-neutral-600">{formatDateLabel(transaction.date)}</td>
+                          <td
+                            className={cn(
+                              'py-3 text-right font-semibold',
+                              transaction.type === 'income' ? 'text-primary-600' : 'text-red-600'
+                            )}
+                          >
+                            {transaction.type === 'income' ? '+' : '-'}
+                            {formatCurrency(transaction.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <TransactionForm isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} />
+          </div>
+        );
+      };
+      
+      // ============================================================================
+      // TRANSACTIONS PAGE
+      // ============================================================================
+      
+      const TransactionsPage = () => {
+        const { transactions, globalFilter, setGlobalFilter } = useAppStore();
+        
+        const monthOptions = [
+          'Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
+        ];
+        
+        const years = useMemo(() => {
+          const set = new Set();
+          const now = new Date();
+          set.add(now.getFullYear());
+          transactions.forEach((transaction) => {
+            const date = parseToDate(transaction.date);
+            if (date) {
+              set.add(date.getFullYear());
+            }
+          });
+          return Array.from(set).sort();
+        }, [transactions]);
+        
+        const filtered = useMemo(() => {
+          return transactions.filter((transaction) => {
+            const date = parseToDate(transaction.date);
+            if (!date) return false;
+            const monthMatch = globalFilter.month ? date.getMonth() + 1 === globalFilter.month : true;
+            const yearMatch = globalFilter.year ? date.getFullYear() === globalFilter.year : true;
+            return monthMatch && yearMatch;
+          });
+        }, [transactions, globalFilter]);
+        
+        const handleMonthChange = (event) => {
+          const value = event.target.value;
+          setGlobalFilter({ month: value ? Number(value) : null });
+        };
+        
+        const handleYearChange = (event) => {
+          const value = event.target.value;
+          setGlobalFilter({ year: value ? Number(value) : null });
+        };
+        
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Filtros</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select label="Mês" value={globalFilter.month ?? ''} onChange={handleMonthChange}>
+                  <option value="">Todos</option>
+                  {monthOptions.map((label, index) => (
+                    <option key={label} value={index + 1}>{label}</option>
+                  ))}
+                </Select>
+                <Select label="Ano" value={globalFilter.year ?? ''} onChange={handleYearChange}>
+                  <option value="">Todos</option>
+                  {years.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </Select>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Extrato Completo</CardTitle>
+                <p className="text-sm text-neutral-500">{filtered.length} transações encontradas</p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-neutral-500">
+                        <th className="py-2">Data</th>
+                        <th className="py-2">Descrição</th>
+                        <th className="py-2">Categoria</th>
+                        <th className="py-2">Pagamento</th>
+                        <th className="py-2 text-right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {filtered.length === 0 && (
+                        <tr>
+                          <td colSpan="5" className="py-6 text-center text-neutral-500">
+                            Nenhuma transação encontrada para o filtro atual.
+                          </td>
+                        </tr>
+                      )}
+                      {filtered.map((transaction) => (
+                        <tr key={transaction.id}>
+                          <td className="py-3 text-neutral-600">{formatDateLabel(transaction.date)}</td>
+                          <td className="py-3 font-medium text-neutral-900">{transaction.description}</td>
+                          <td className="py-3">
+                            <Badge variant={transaction.type === 'income' ? 'income' : 'expense'}>
+                              {transaction.category || 'Geral'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 text-neutral-600 capitalize">{transaction.paymentMethod || '—'}</td>
+                          <td
+                            className={cn(
+                              'py-3 text-right font-semibold',
+                              transaction.type === 'income' ? 'text-primary-600' : 'text-red-600'
+                            )}
+                          >
+                            {transaction.type === 'income' ? '+' : '-'}
+                            {formatCurrency(transaction.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      };
+      
+      // ============================================================================
+      // IMPORT PAGE
+      // ============================================================================
+      
+      const ImportPage = () => {
+        const { transactions, addTransaction } = useAppStore();
+        const [parsedTransactions, setParsedTransactions] = useState([]);
+        const [selectedFile, setSelectedFile] = useState(null);
+        const [isLoading, setIsLoading] = useState(false);
+        const [error, setError] = useState(null);
+        const [importStats, setImportStats] = useState(null);
+        
+        const handleFileSelect = async (event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          
+          setSelectedFile(file);
+          setError(null);
+          setIsLoading(true);
+          setParsedTransactions([]);
+          setImportStats(null);
+          
+          try {
+            const content = await readFileAsText(file);
+            const parsed = parseOFX(content);
+            
+            if (parsed.length === 0) {
+              setError('Nenhuma transação encontrada no arquivo. Verifique se é um arquivo OFX válido.');
+            } else {
+              setParsedTransactions(parsed);
+            }
+          } catch (err) {
+            console.error('Error reading file:', err);
+            setError('Erro ao ler o arquivo. Verifique se é um arquivo OFX válido.');
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        
+        const handleConfirmImport = () => {
+          if (parsedTransactions.length === 0) return;
+          
+          const userId = 'default-user'; // TODO: Get from auth
+          let imported = 0;
+          let duplicates = 0;
+          
+          // Get existing FITID set for duplicate detection
+          const existingFitIds = new Set(
+            transactions
+              .filter(t => t.fitId)
+              .map(t => t.fitId)
+          );
+          
+          parsedTransactions.forEach((transaction) => {
+            // Check for duplicates using FITID
+            if (existingFitIds.has(transaction.fitId)) {
+              duplicates++;
+              return;
+            }
+            
+            // Add transaction
+            addTransaction({
+              description: transaction.description,
+              amount: transaction.amount,
+              type: transaction.type,
+              date: transaction.date,
+              category: transaction.category,
+              paymentMethod: transaction.paymentMethod,
+              installments: null,
+              userId,
+              fitId: transaction.fitId
+            });
+            
+            existingFitIds.add(transaction.fitId);
+            imported++;
+          });
+          
+          // Show import stats
+          setImportStats({
+            total: parsedTransactions.length,
+            imported,
+            duplicates
+          });
+          
+          // Clear preview
+          setParsedTransactions([]);
+          setSelectedFile(null);
+        };
+        
+        const handleClearPreview = () => {
+          setParsedTransactions([]);
+          setSelectedFile(null);
+          setError(null);
+          setImportStats(null);
+        };
+        
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Importação de Arquivos OFX</CardTitle>
+                <p className="text-sm text-neutral-600">
+                  Importe extratos bancários no formato OFX para adicionar transações automaticamente
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                    Selecione o arquivo OFX
+                  </label>
+                  <input
+                    type="file"
+                    accept=".ofx,.OFX"
+                    onChange={handleFileSelect}
+                    className="block w-full text-sm text-neutral-900 border border-neutral-300 rounded-lg cursor-pointer bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                  />
+                </div>
+                
+                {isLoading && (
+                  <div className="flex items-center gap-2 text-sm text-neutral-600">
+                    <div className="animate-spin h-4 w-4 border-2 border-primary-600 border-t-transparent rounded-full" />
+                    <span>Processando arquivo...</span>
+                  </div>
+                )}
+                
+                {error && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                )}
+                
+                {importStats && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800 font-medium mb-2">
+                      ✅ Importação concluída com sucesso!
+                    </p>
+                    <ul className="text-sm text-green-700 space-y-1">
+                      <li>• Total de transações no arquivo: {importStats.total}</li>
+                      <li>• Transações importadas: {importStats.imported}</li>
+                      <li>• Duplicatas ignoradas: {importStats.duplicates}</li>
+                    </ul>
+                  </div>
+                )}
+                
+                {selectedFile && !isLoading && (
+                  <div className="text-sm text-neutral-600">
+                    <p><strong>Arquivo selecionado:</strong> {selectedFile.name}</p>
+                    <p><strong>Tamanho:</strong> {(selectedFile.size / 1024).toFixed(2)} KB</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            
+            {parsedTransactions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Prévia das Transações</CardTitle>
+                      <p className="text-sm text-neutral-600">
+                        {parsedTransactions.length} transações encontradas
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={handleClearPreview}>
+                        Cancelar
+                      </Button>
+                      <Button variant="primary" onClick={handleConfirmImport}>
+                        Confirmar Importação
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-left text-neutral-500 border-b">
+                          <th className="py-2 px-2">Data</th>
+                          <th className="py-2 px-2">Descrição</th>
+                          <th className="py-2 px-2">Tipo</th>
+                          <th className="py-2 px-2 text-right">Valor</th>
+                          <th className="py-2 px-2">ID</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-100">
+                        {parsedTransactions.map((transaction, index) => (
+                          <tr key={index} className="hover:bg-neutral-50">
+                            <td className="py-2 px-2 text-neutral-600">
+                              {formatDateLabel(transaction.date)}
+                            </td>
+                            <td className="py-2 px-2 font-medium text-neutral-900">
+                              {transaction.description}
+                            </td>
+                            <td className="py-2 px-2">
+                              <Badge variant={transaction.type === 'income' ? 'income' : 'expense'}>
+                                {transaction.type === 'income' ? 'Receita' : 'Despesa'}
+                              </Badge>
+                            </td>
+                            <td className={cn(
+                              'py-2 px-2 text-right font-semibold',
+                              transaction.type === 'income' ? 'text-primary-600' : 'text-red-600'
+                            )}>
+                              {transaction.type === 'income' ? '+' : '-'}
+                              {formatCurrency(transaction.amount)}
+                            </td>
+                            <td className="py-2 px-2 text-xs text-neutral-500 font-mono">
+                              {transaction.fitId.substring(0, 12)}...
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      };
+      
+      const SettingsPage = () => {
+        const { currentUser, syncError, isSyncing } = useFirebaseSync();
+        
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configurações</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-900 mb-2">Sincronização</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-lg">
+                      <span className="text-sm text-neutral-700">Status de Sincronização:</span>
+                      <Badge variant={isSyncing ? 'warning' : currentUser ? 'success' : 'neutral'}>
+                        {isSyncing ? 'Sincronizando...' : currentUser ? 'Conectado' : 'Offline'}
+                      </Badge>
+                    </div>
+                    
+                    {currentUser && (
+                      <div className="p-3 bg-primary-50 border border-primary-200 rounded-lg">
+                        <p className="text-sm text-primary-800">
+                          ✅ Seus dados estão sendo sincronizados automaticamente com o Firebase
+                        </p>
+                      </div>
+                    )}
+                    
+                    {!currentUser && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-sm text-amber-800">
+                          ⚠️ Faça login para sincronizar seus dados na nuvem
+                        </p>
+                      </div>
+                    )}
+                    
+                    {syncError && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-800">{syncError}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-900 mb-2">Sobre o Sistema</h3>
+                  <p className="text-sm text-neutral-600">
+                    Sistema Financeiro Pessoal - Versão 0.1
+                  </p>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Dados armazenados localmente e sincronizados com Firebase Firestore
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      };
+      
+      // ============================================================================
+      // MAIN APP COMPONENT
+      // ============================================================================
+      
+      function App() {
+        return (
+          <HashRouter>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/transactions" element={<TransactionsPage />} />
+                <Route path="/import" element={<ImportPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="*" element={<Dashboard />} />
+              </Routes>
+            </Layout>
+          </HashRouter>
+        );
+      }
+      
+      // ============================================================================
+      // RENDER APP
+      // ============================================================================
+      
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+</body>
+</html>
