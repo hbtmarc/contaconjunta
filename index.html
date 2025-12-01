@@ -22,7 +22,7 @@
         "zustand/middleware": "https://esm.sh/zustand@4.5.2/middleware?external=react",
         "clsx": "https://esm.sh/clsx",
         "tailwind-merge": "https://esm.sh/tailwind-merge",
-        "lucide-react": "https://esm.sh/lucide-react@0.363.0?external=react",
+        "lucide-react": "https://esm.sh/lucide-react@0.363.0?deps=react@18.2.0",
         "date-fns": "https://esm.sh/date-fns@3.6.0",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js",
         "firebase/database": "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js"
@@ -1759,9 +1759,9 @@ const firebaseConfig = {
                   type="button" 
                   variant="primary"
                   onClick={handleDelete}
-                  className="flex-1 bg-red-600 hover:bg-red-700"
+                  className="flex-1 bg-red-600 hover:bg-red-700 font-semibold"
                 >
-                  Excluir
+                  🗑️ Confirmar Exclusão
                 </Button>
               </div>
             </div>
@@ -2328,6 +2328,7 @@ const firebaseConfig = {
         const [isFormOpen, setIsFormOpen] = useState(false);
         const [editingTransaction, setEditingTransaction] = useState(null);
         const [deletingTransaction, setDeletingTransaction] = useState(null);
+        const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'income', 'expense'
         const now = useMemo(() => new Date(), []);
         const activePeriod = useMemo(() => ({
           month: globalFilter.month ?? now.getMonth() + 1,
@@ -2358,14 +2359,18 @@ const firebaseConfig = {
         const balance = summary.income - summary.expense;
         
         const lastTransactions = useMemo(() => {
-          return [...filteredTransactions]
+          let filtered = filteredTransactions;
+          if (typeFilter !== 'all') {
+            filtered = filtered.filter(t => t.type === typeFilter);
+          }
+          return [...filtered]
             .sort((a, b) => {
               const dateA = parseToDate(a.date)?.getTime() || 0;
               const dateB = parseToDate(b.date)?.getTime() || 0;
               return dateB - dateA;
             })
-            .slice(0, 5);
-        }, [filteredTransactions]);
+            .slice(0, 10);
+        }, [filteredTransactions, typeFilter]);
         
         const handleDeleteConfirm = async (transaction, transactionsToDelete) => {
           for (const txn of transactionsToDelete) {
@@ -2428,10 +2433,39 @@ const firebaseConfig = {
             
             <Card>
               <CardHeader>
-                <CardTitle>Últimas transações</CardTitle>
-                <p className="text-sm text-neutral-500">
-                  Período: {String(activePeriod.month).padStart(2, '0')}/{activePeriod.year}
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Últimas transações</CardTitle>
+                    <p className="text-sm text-neutral-500">
+                      Período: {String(activePeriod.month).padStart(2, '0')}/{activePeriod.year}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={typeFilter === 'all' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setTypeFilter('all')}
+                    >
+                      Todas
+                    </Button>
+                    <Button
+                      variant={typeFilter === 'income' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setTypeFilter('income')}
+                      className={typeFilter === 'income' ? 'bg-green-600 hover:bg-green-700' : ''}
+                    >
+                      ↗️ Receitas
+                    </Button>
+                    <Button
+                      variant={typeFilter === 'expense' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setTypeFilter('expense')}
+                      className={typeFilter === 'expense' ? 'bg-red-600 hover:bg-red-700' : ''}
+                    >
+                      ↘️ Despesas
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -2579,6 +2613,25 @@ const firebaseConfig = {
           });
         }, [transactions, globalFilter]);
         
+        const summary = useMemo(() => {
+          return filtered.reduce(
+            (acc, transaction) => {
+              if (transaction.type === 'income') {
+                acc.income += transaction.amount;
+                acc.incomeCount++;
+              }
+              if (transaction.type === 'expense') {
+                acc.expense += transaction.amount;
+                acc.expenseCount++;
+              }
+              return acc;
+            },
+            { income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }
+          );
+        }, [filtered]);
+        
+        const balance = summary.income - summary.expense;
+        
         const handleDeleteConfirm = async (transaction, transactionsToDelete) => {
           for (const txn of transactionsToDelete) {
             await deleteTransactionFromDatabase(txn.id, txn.ownerId);
@@ -2617,6 +2670,59 @@ const firebaseConfig = {
                 </Select>
               </CardContent>
             </Card>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-neutral-500 font-medium">Receitas</p>
+                    <p className="text-xl font-semibold text-green-700 mt-1">
+                      {formatCurrency(summary.income)}
+                    </p>
+                    <p className="text-xs text-neutral-400 mt-1">{summary.incomeCount} transações</p>
+                  </div>
+                  <span className="p-3 rounded-full bg-green-100 text-green-700 text-2xl">
+                    ↗️
+                  </span>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-neutral-500 font-medium">Despesas</p>
+                    <p className="text-xl font-semibold text-red-700 mt-1">
+                      {formatCurrency(summary.expense)}
+                    </p>
+                    <p className="text-xs text-neutral-400 mt-1">{summary.expenseCount} transações</p>
+                  </div>
+                  <span className="p-3 rounded-full bg-red-100 text-red-700 text-2xl">
+                    ↘️
+                  </span>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-neutral-500 font-medium">Saldo</p>
+                    <p className={cn(
+                      "text-xl font-semibold mt-1",
+                      balance >= 0 ? 'text-blue-700' : 'text-orange-700'
+                    )}>
+                      {formatCurrency(balance)}
+                    </p>
+                    <p className="text-xs text-neutral-400 mt-1">{filtered.length} transações</p>
+                  </div>
+                  <span className={cn(
+                    "p-3 rounded-full text-2xl",
+                    balance >= 0 ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                  )}>
+                    {balance >= 0 ? '💰' : '⚠️'}
+                  </span>
+                </CardContent>
+              </Card>
+            </div>
             
             <Card>
               <CardHeader>
@@ -2786,20 +2892,32 @@ const firebaseConfig = {
           }
         };
         
+        const goToToday = () => {
+          setCurrentMonth(now.getMonth() + 1);
+          setCurrentYear(now.getFullYear());
+        };
+        
         const monthName = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][currentMonth - 1];
         const weekDays = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+        const isCurrentMonth = currentMonth === (now.getMonth() + 1) && currentYear === now.getFullYear();
         
         return (
           <div className="space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>{monthName} {currentYear}</CardTitle>
+                  <CardTitle>📅 {monthName} {currentYear}</CardTitle>
                   <div className="flex gap-2">
-                    <Button variant="secondary" size="sm" onClick={prevMonth}>←</Button>
-                    <Button variant="secondary" size="sm" onClick={nextMonth}>→</Button>
+                    <Button variant="secondary" size="sm" onClick={prevMonth}>⬅️ Anterior</Button>
+                    {!isCurrentMonth && (
+                      <Button variant="default" size="sm" onClick={goToToday}>📍 Hoje</Button>
+                    )}
+                    <Button variant="secondary" size="sm" onClick={nextMonth}>Próximo ➡️</Button>
                   </div>
                 </div>
+                <p className="text-sm text-neutral-500 mt-2">
+                  Visualização mensal de transações • Total: {monthTransactions.length} transações
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-7 gap-2">
@@ -2838,6 +2956,37 @@ const firebaseConfig = {
                       </div>
                     );
                   })}
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Resumo do Mês</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <p className="text-sm text-neutral-600 mb-1">↗️ Receitas</p>
+                    <p className="text-xl font-semibold text-green-700">
+                      {formatCurrency(monthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0))}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-red-50 rounded-lg">
+                    <p className="text-sm text-neutral-600 mb-1">↘️ Despesas</p>
+                    <p className="text-xl font-semibold text-red-700">
+                      {formatCurrency(monthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0))}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-neutral-600 mb-1">💰 Saldo</p>
+                    <p className="text-xl font-semibold text-blue-700">
+                      {formatCurrency(
+                        monthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0) -
+                        monthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
+                      )}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
